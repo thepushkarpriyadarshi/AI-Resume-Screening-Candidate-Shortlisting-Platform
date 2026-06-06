@@ -2,11 +2,15 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs");
+const dns = require("dns");
 const dotenv = require("dotenv");
 const mongoose = require("mongoose");
 const pdfParse = require("pdf-parse/lib/pdf-parse");
 
 dotenv.config();
+
+// MongoDB Atlas SRV DNS fix
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const app = express();
 app.use(cors());
@@ -54,6 +58,57 @@ const upload = multer({
 });
 
 /* Extract Functions */
+
+function calculateJobMatch(resumeSkills, jobDescription) {
+  const jdText = jobDescription.toLowerCase();
+
+  const requiredSkills = [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "React",
+    "Node.js",
+    "Express",
+    "MongoDB",
+    "Python",
+    "Java",
+    "C++",
+    "SQL",
+    "Git",
+    "TypeScript",
+    "Machine Learning",
+    "Data Analysis",
+  ].filter((skill) => jdText.includes(skill.toLowerCase()));
+
+  const matchedSkills = resumeSkills.filter((skill) =>
+    requiredSkills.map((s) => s.toLowerCase()).includes(skill.toLowerCase())
+  );
+
+  const missingSkills = requiredSkills.filter(
+    (skill) =>
+      !resumeSkills.map((s) => s.toLowerCase()).includes(skill.toLowerCase())
+  );
+
+  const matchScore =
+    requiredSkills.length > 0
+      ? Math.round((matchedSkills.length / requiredSkills.length) * 100)
+      : 0;
+
+  return {
+    requiredSkills,
+    matchedSkills,
+    missingSkills,
+    matchScore: matchScore + "%",
+    recommendation:
+      matchScore >= 75
+        ? "Strong Match"
+        : matchScore >= 50
+        ? "Average Match"
+        : "Weak Match",
+  };
+}
+
+
 function extractEmail(text) {
   const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   return match ? match[0] : "Not Found";
@@ -166,6 +221,141 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
   }
 });
 
+app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No files uploaded",
+      });
+    }
+
+    const results = [];
+
+    for (const file of req.files) {
+      try {
+        const fileBuffer = await fs.promises.readFile(file.path);
+        const pdfData = await pdfParse(fileBuffer);
+        const text = pdfData.text || "";
+
+        const skills = extractSkills(text);
+        const scoreValue = calculateScore(skills);
+
+        const analysis = {
+          name: extractName(text, file.originalname),
+          email: extractEmail(text),
+          phone: extractPhone(text),
+          skills: skills.length ? skills : ["No major skills found"],
+          score: scoreValue + "%",
+          recommendation:
+            scoreValue >= 75 ? "Shortlist Candidate" : "Needs Manual Review",
+        };
+
+        let savedCandidate = null;
+
+        if (mongoose.connection.readyState === 1) {
+          savedCandidate = await Candidate.create({
+            name: analysis.name,
+            email: analysis.email,
+            phone: analysis.phone,
+            skills: analysis.skills,
+            score: analysis.score,
+            status: analysis.recommendation,
+            fileName: file.originalname,
+          });
+        }
+
+        results.push({
+          success: true,
+          fileName: file.originalname,
+          analysis,
+          candidate: savedCandidate,
+        });
+      } catch (fileError) {
+        results.push({
+          success: false,
+          fileName: file.originalname,
+          error: fileError.message,
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `${results.length} resumes processed`,
+      results,
+    });
+  } catch (error) {
+    console.log("BULK UPLOAD ERROR:", error.message);
+
+    res.status(500).json({
+      success: false,
+      message: "Bulk Resume Processing Failed",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/stats", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({
+        success: true,
+        stats: {
+          totalCandidates: 0,
+          shortlisted: 0,
+          manualReview: 0,
+          rejected: 0,
+          averageScore: "0%",
+        },
+      });
+    }
+
+    const candidates = await Candidate.find();
+
+    const totalCandidates = candidates.length;
+
+    const shortlisted = candidates.filter(
+      (candidate) => candidate.status === "Shortlist Candidate"
+    ).length;
+
+    const manualReview = candidates.filter(
+      (candidate) => candidate.status === "Needs Manual Review"
+    ).length;
+
+    const rejected = candidates.filter(
+      (candidate) => candidate.status === "Rejected"
+    ).length;
+
+    const totalScore = candidates.reduce((sum, candidate) => {
+      const score = parseInt(candidate.score?.replace("%", "") || "0");
+      return sum + score;
+    }, 0);
+
+    const averageScore =
+      candidates.length > 0
+        ? Math.round(totalScore / candidates.length) + "%"
+        : "0%";
+
+    res.json({
+      success: true,
+      stats: {
+        totalCandidates,
+        shortlisted,
+        manualReview,
+        rejected,
+        averageScore,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Stats Fetch Failed",
+      error: error.message,
+    });
+  }
+});
+
 app.get("/api/candidates", async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -185,6 +375,88 @@ app.get("/api/candidates", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Candidates Fetch Failed",
+      error: error.message,
+    });
+  }
+});
+
+app.put("/api/candidates/:id/status", async (req, res) => {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(500).json({
+        success: false,
+        message: "MongoDB not connected",
+      });
+    }
+
+    const { status } = req.body;
+
+    const candidate = await Candidate.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    );
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Candidate status updated",
+      candidate,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Status update failed",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/match-job", async (req, res) => {
+  try {
+    const { candidateId, jobDescription } = req.body;
+
+    if (!candidateId || !jobDescription) {
+      return res.status(400).json({
+        success: false,
+        message: "candidateId and jobDescription are required",
+      });
+    }
+
+    const candidate = await Candidate.findById(candidateId);
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    const matchResult = calculateJobMatch(
+      candidate.skills || [],
+      jobDescription
+    );
+
+    res.json({
+      success: true,
+      candidate: {
+        id: candidate._id,
+        name: candidate.name,
+        email: candidate.email,
+        skills: candidate.skills,
+      },
+      jobMatch: matchResult,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Job matching failed",
       error: error.message,
     });
   }

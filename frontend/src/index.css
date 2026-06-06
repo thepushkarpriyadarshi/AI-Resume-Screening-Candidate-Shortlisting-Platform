@@ -10,3 +10,37 @@ body{
   font-family:Arial, Helvetica, sans-serif;
   background:#f5f7ff;
 }
+
+/* Global Button Animation */
+
+.btn-animated{
+  transition: all 0.3s ease;
+}
+
+.btn-animated:hover{
+  transform: translateY(-2px) scale(1.03);
+}
+
+.btn-animated:active{
+  transform: scale(0.96);
+}
+
+/* Card Animation */
+
+.card-animated{
+  transition: all 0.3s ease;
+}
+
+.card-animated:hover{
+  transform: translateY(-6px);
+}
+
+/* Table Row Animation */
+
+.row-animated{
+  transition: all 0.2s ease;
+}
+
+.row-animated:hover{
+  transform: scale(1.01);
+}

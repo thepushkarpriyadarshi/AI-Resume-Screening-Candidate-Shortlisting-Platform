@@ -21,12 +21,16 @@ import {
 } from "lucide-react";
 
 type CandidateType = {
+  _id?: string;
   id?: number;
   name: string;
+  email?: string;
   role?: string;
   skills: string[] | string;
-  score: string;
+  score: string | number;
+  scoreDisplay?: string;
   status: string;
+  fileName?: string;
 };
 
 function App() {
@@ -80,7 +84,9 @@ function Login() {
           <input className="w-full border p-4 rounded-xl mb-4" placeholder="Email" type="email" required />
           <input className="w-full border p-4 rounded-xl mb-6" placeholder="Password" type="password" required />
 
-          <button className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">Login</button>
+          <button className="btn-animated w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">
+            Login
+          </button>
 
           <p className="text-center mt-6">
             Don’t have account? <Link to="/register" className="text-indigo-600 font-bold">Register</Link>
@@ -118,7 +124,9 @@ function Register() {
           <input className="w-full border p-4 rounded-xl mb-4" placeholder="Email" type="email" required />
           <input className="w-full border p-4 rounded-xl mb-6" placeholder="Password" type="password" required />
 
-          <button className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">Create Account</button>
+          <button className="btn-animated w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">
+            Create Account
+          </button>
 
           <p className="text-center mt-6">
             Already have account? <Link to="/login" className="text-indigo-600 font-bold">Login</Link>
@@ -148,7 +156,7 @@ function Layout({ children }: { children: ReactNode }) {
         <SideLink to="/upload" icon={<Upload />} text="Resume Upload" />
         <SideLink to="/settings" icon={<Settings />} text="Settings" />
 
-        <button onClick={logout} className="mt-10 bg-red-500 w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+        <button onClick={logout} className="btn-animated mt-10 bg-red-500 w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2">
           <LogOut size={18} /> Logout
         </button>
       </aside>
@@ -162,7 +170,9 @@ function Layout({ children }: { children: ReactNode }) {
 
           <div className="flex gap-4 items-center">
             <Bell className="text-gray-500" />
-            <button className="bg-indigo-600 text-white px-5 py-3 rounded-xl">+ Create Job</button>
+            <button className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl">
+              + Create Job
+            </button>
           </div>
         </nav>
 
@@ -177,7 +187,7 @@ function SideLink({ to, icon, text }: { to: string; icon: ReactNode; text: strin
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-3 p-4 mb-3 rounded-xl ${isActive ? "bg-indigo-600" : "hover:bg-white/10"}`
+        `btn-animated flex items-center gap-3 p-4 mb-3 rounded-xl ${isActive ? "bg-indigo-600" : "hover:bg-white/10"}`
       }
     >
       {icon}
@@ -187,42 +197,81 @@ function SideLink({ to, icon, text }: { to: string; icon: ReactNode; text: strin
 }
 
 function Dashboard() {
+  const [stats, setStats] = useState({
+    totalCandidates: 0,
+    shortlisted: 0,
+    manualReview: 0,
+    averageScore: "0%",
+  });
+
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/stats");
+
+      if (response.data.success) {
+        setStats(response.data.stats);
+      }
+    } catch (error) {
+      console.log("Stats fetch failed", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <>
       <section className="m-6 bg-gradient-to-r from-[#0f172a] via-[#312e81] to-[#7c3aed] rounded-[35px] p-10 text-white shadow-2xl">
         <h1 className="text-5xl font-bold leading-tight">
           AI Resume Screening & <span className="text-purple-300">Candidate Shortlisting</span>
         </h1>
+
         <p className="mt-5 text-gray-200 text-lg">
           Screen resumes, analyze candidates, and hire faster with AI scoring.
         </p>
       </section>
 
-      <section className="px-6 grid grid-cols-4 gap-6">
-        <Card title="Total Jobs" value="12" />
-        <Card title="Candidates" value="245" />
-        <Card title="Shortlisted" value="32" />
-        <Card title="Hired" value="8" />
-      </section>
+      {loading ? (
+        <div className="px-6">
+          <div className="card-animated bg-white p-8 rounded-3xl shadow-sm">
+            Loading Dashboard...
+          </div>
+        </div>
+      ) : (
+        <section className="px-6 grid grid-cols-4 gap-6">
+          <Card title="Total Candidates" value={String(stats.totalCandidates)} />
+          <Card title="Shortlisted" value={String(stats.shortlisted)} />
+          <Card title="Manual Review" value={String(stats.manualReview)} />
+          <Card title="Average Score" value={stats.averageScore} />
+        </section>
+      )}
     </>
   );
 }
 
 function UploadResume() {
   const [file, setFile] = useState<File | null>(null);
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
   const [message, setMessage] = useState("");
+  const [bulkMessage, setBulkMessage] = useState("");
   const [analysis, setAnalysis] = useState<{
     name: string;
     email: string;
     phone: string;
     skills: string[];
-    score: string;
+    score: string | number;
+    scoreDisplay?: string;
     recommendation: string;
   } | null>(null);
 
   const handleUpload = async () => {
     if (!file) {
-      alert("Pehle Choose PDF Resume button se file select karo");
+      alert("Pehle single PDF resume select karo");
       return;
     }
 
@@ -230,101 +279,191 @@ function UploadResume() {
     formData.append("resume", file);
 
     try {
+      setMessage("Uploading...");
       const response = await axios.post("http://localhost:5000/api/upload", formData);
 
       setMessage(response.data.message);
 
-      const backendAnalysis = response.data.analysis || {
-        name: file.name.replace(".pdf", ""),
-        email: "candidate@email.com",
-        phone: "+91 9876543210",
-        skills: ["React", "Node.js", "MongoDB", "JavaScript"],
-        score: "92%",
-        recommendation: "Shortlist Candidate",
-      };
-
-      setAnalysis(backendAnalysis);
+      setAnalysis(response.data.analysis);
     } catch (error) {
       setMessage("Upload Failed");
       setAnalysis(null);
     }
   };
 
+  const handleBulkUpload = async () => {
+    if (bulkFiles.length === 0) {
+      alert("Pehle bulk PDFs select karo");
+      return;
+    }
+
+    if (bulkFiles.length > 50) {
+      alert("Maximum 50 resumes ek saath upload kar sakte ho");
+      return;
+    }
+
+    const formData = new FormData();
+
+    bulkFiles.forEach((file) => {
+      formData.append("resumes", file);
+    });
+
+    try {
+      setBulkMessage("Bulk uploading resumes...");
+
+      const response = await axios.post(
+        "http://localhost:5000/api/upload/bulk",
+        formData
+      );
+
+      const results = response.data.results || [];
+      const successCount = results.filter((item: any) => item.success).length;
+      const failedCount = results.filter((item: any) => !item.success).length;
+
+      setBulkMessage(
+        `Bulk upload complete: ${successCount} successful, ${failedCount} failed`
+      );
+    } catch (error) {
+      setBulkMessage("Bulk Upload Failed");
+    }
+  };
+
   return (
     <div className="p-6">
-      <div className="bg-white rounded-3xl p-10 shadow-sm">
+      <div className="card-animated bg-white rounded-3xl p-10 shadow-sm">
         <h2 className="text-3xl font-bold mb-3">Upload Resume</h2>
-        <p className="text-gray-500 mb-8">Upload PDF resume for AI screening.</p>
+        <p className="text-gray-500 mb-8">
+          Upload single or bulk PDF resumes for AI screening.
+        </p>
 
-        <div className="border-2 border-dashed border-indigo-300 bg-indigo-50 rounded-3xl p-12 text-center">
-          <FileText className="mx-auto text-indigo-600 mb-4" size={60} />
+        <div className="grid grid-cols-2 gap-6">
+          <div className="border-2 border-dashed border-indigo-300 bg-indigo-50 rounded-3xl p-10 text-center">
+            <FileText className="mx-auto text-indigo-600 mb-4" size={55} />
 
-          <h3 className="text-2xl font-bold mb-2">Choose Resume PDF</h3>
-          <p className="text-gray-500 mb-6">Only PDF files supported</p>
+            <h3 className="text-2xl font-bold mb-2">Single Resume Upload</h3>
+            <p className="text-gray-500 mb-6">Upload one PDF resume</p>
 
-          <label className="inline-block bg-white border border-indigo-300 text-indigo-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
-            Choose PDF Resume
-            <input
-              type="file"
-              accept="application/pdf,.pdf"
-              className="hidden"
-              onChange={(e) => {
-                setFile(e.target.files?.[0] || null);
-                setMessage("");
-                setAnalysis(null);
-              }}
-            />
-          </label>
+            <label className="btn-animated inline-block bg-white border border-indigo-300 text-indigo-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
+              Choose Single PDF
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  setFile(e.target.files?.[0] || null);
+                  setMessage("");
+                  setAnalysis(null);
+                }}
+              />
+            </label>
 
-          {file && (
-            <p className="mt-5 font-semibold text-indigo-600">
-              Selected File: {file.name}
+            {file && (
+              <p className="mt-5 font-semibold text-indigo-600">
+                Selected File: {file.name}
+              </p>
+            )}
+
+            <button
+              onClick={handleUpload}
+              className="btn-animated mt-8 bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold"
+            >
+              Upload & Analyze
+            </button>
+
+            {message && (
+              <p className="mt-5 font-semibold text-green-600">{message}</p>
+            )}
+          </div>
+
+          <div className="border-2 border-dashed border-purple-300 bg-purple-50 rounded-3xl p-10 text-center">
+            <Upload className="mx-auto text-purple-600 mb-4" size={55} />
+
+            <h3 className="text-2xl font-bold mb-2">Bulk Resume Upload</h3>
+            <p className="text-gray-500 mb-6">
+              Upload up to 50 PDF resumes at once
             </p>
-          )}
 
-          <br />
+            <label className="btn-animated inline-block bg-white border border-purple-300 text-purple-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
+              Choose Multiple PDFs
+              <input
+                type="file"
+                multiple
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const selectedFiles = Array.from(e.target.files || []);
 
-          <button
-            onClick={handleUpload}
-            className="mt-8 bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold"
-          >
-            Upload & Analyze
-          </button>
+                  if (selectedFiles.length > 50) {
+                    alert("Maximum 50 resumes select kar sakte ho");
+                    return;
+                  }
 
-          {message && (
-            <p className="mt-5 font-semibold text-green-600">
-              {message}
-            </p>
-          )}
+                  setBulkFiles(selectedFiles);
+                  setBulkMessage("");
+                }}
+              />
+            </label>
+
+            {bulkFiles.length > 0 && (
+              <div className="mt-5 text-left bg-white rounded-2xl p-4 max-h-40 overflow-y-auto">
+                <p className="font-bold text-purple-700 mb-2">
+                  Selected Resumes: {bulkFiles.length}
+                </p>
+
+                {bulkFiles.map((file, index) => (
+                  <p key={index} className="text-sm text-gray-600">
+                    {index + 1}. {file.name}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={handleBulkUpload}
+              className="btn-animated mt-8 bg-purple-600 text-white px-8 py-4 rounded-xl font-bold"
+            >
+              Bulk Upload & Analyze
+            </button>
+
+            {bulkMessage && (
+              <p className="mt-5 font-semibold text-purple-700">
+                {bulkMessage}
+              </p>
+            )}
+          </div>
         </div>
 
         {analysis && (
           <div className="mt-8 bg-gray-50 rounded-3xl p-8 border">
-            <h2 className="text-2xl font-bold mb-5">AI Resume Analysis Result</h2>
+            <h2 className="text-2xl font-bold mb-5">
+              AI Resume Analysis Result
+            </h2>
 
             <div className="grid grid-cols-2 gap-5">
-              <div className="bg-white p-5 rounded-2xl border">
+              <div className="card-animated bg-white p-5 rounded-2xl border">
                 <p className="text-gray-500">Candidate Name</p>
                 <h3 className="text-xl font-bold">{analysis.name}</h3>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border">
+              <div className="card-animated bg-white p-5 rounded-2xl border">
                 <p className="text-gray-500">AI Match Score</p>
-                <h3 className="text-3xl font-bold text-green-600">{analysis.score}</h3>
+                <h3 className="text-3xl font-bold text-green-600">
+                  {analysis.scoreDisplay || analysis.score}
+                </h3>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border">
+              <div className="card-animated bg-white p-5 rounded-2xl border">
                 <p className="text-gray-500">Email</p>
                 <h3 className="font-semibold">{analysis.email}</h3>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border">
+              <div className="card-animated bg-white p-5 rounded-2xl border">
                 <p className="text-gray-500">Phone</p>
                 <h3 className="font-semibold">{analysis.phone}</h3>
               </div>
             </div>
 
-            <div className="mt-6 bg-white p-5 rounded-2xl border">
+            <div className="mt-6 card-animated bg-white p-5 rounded-2xl border">
               <p className="text-gray-500 mb-3">Extracted Skills</p>
               <div className="flex gap-2 flex-wrap">
                 {analysis.skills.map((skill) => (
@@ -338,7 +477,7 @@ function UploadResume() {
               </div>
             </div>
 
-            <div className="mt-6 bg-green-50 border border-green-200 p-5 rounded-2xl">
+            <div className="mt-6 card-animated bg-green-50 border border-green-200 p-5 rounded-2xl">
               <p className="text-gray-500">Recommendation</p>
               <h3 className="text-xl font-bold text-green-700">
                 {analysis.recommendation}
@@ -354,8 +493,16 @@ function UploadResume() {
 function Candidates() {
   const [candidates, setCandidates] = useState<CandidateType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [selectedCandidate, setSelectedCandidate] =
+    useState<CandidateType | null>(null);
+
+  const [jobDescription, setJobDescription] = useState("");
+  const [jobMatchResult, setJobMatchResult] = useState<any>(null);
 
   const fetchCandidates = async () => {
+    setLoading(true);
     try {
       const response = await axios.get("http://localhost:5000/api/candidates");
       setCandidates(response.data.candidates || []);
@@ -366,58 +513,105 @@ function Candidates() {
     }
   };
 
+  const updateStatus = async (id: string | undefined, status: string) => {
+    if (!id) return;
+
+    try {
+      await axios.put(`http://localhost:5000/api/candidates/${id}/status`, {
+        status,
+      });
+
+      await fetchCandidates();
+      setSelectedCandidate(null);
+      alert(`Candidate marked as ${status}`);
+    } catch (error) {
+      console.log("Status update failed", error);
+    }
+  };
+
+  const handleJobMatch = async () => {
+    if (!selectedCandidate?._id) return;
+
+    if (!jobDescription.trim()) {
+      alert("Pehle Job Description likho");
+      return;
+    }
+
+    try {
+      const response = await axios.post("http://localhost:5000/api/match-job", {
+        candidateId: selectedCandidate._id,
+        jobDescription,
+      });
+
+      setJobMatchResult(response.data.jobMatch);
+    } catch (error) {
+      console.log("Job matching failed", error);
+      alert("Job matching failed");
+    }
+  };
+
   useEffect(() => {
     fetchCandidates();
   }, []);
 
-  const defaultCandidates: CandidateType[] = [
-    {
-      name: "John Doe",
-      role: "Full Stack Developer",
-      skills: ["React", "Node.js"],
-      score: "95%",
-      status: "Shortlisted",
-    },
-    {
-      name: "Jane Smith",
-      role: "Backend Developer",
-      skills: ["Python", "MongoDB"],
-      score: "88%",
-      status: "In Review",
-    },
-    {
-      name: "Aman Sharma",
-      role: "React Developer",
-      skills: ["JavaScript", "React"],
-      score: "82%",
-      status: "Pending",
-    },
-  ];
+  const filteredCandidates = candidates.filter((candidate) => {
+    const searchText = search.toLowerCase();
 
-  const allCandidates = candidates.length > 0 ? candidates : defaultCandidates;
+    const matchesSearch =
+      candidate.name?.toLowerCase().includes(searchText) ||
+      candidate.email?.toLowerCase().includes(searchText) ||
+      String(candidate.skills).toLowerCase().includes(searchText);
+
+    const matchesStatus =
+      statusFilter === "All" || candidate.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="p-6">
-      <div className="bg-white rounded-3xl p-8 shadow-sm">
+      <div className="card-animated bg-white rounded-3xl p-8 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Candidates</h2>
 
           <button
             onClick={fetchCandidates}
-            className="bg-indigo-600 text-white px-5 py-3 rounded-xl"
+            className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl"
           >
             Refresh
           </button>
         </div>
 
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <input
+            className="border p-4 rounded-xl col-span-2"
+            placeholder="Search by name, email or skills..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+
+          <select
+            className="border p-4 rounded-xl"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="All">All Status</option>
+            <option value="Shortlist Candidate">Shortlisted</option>
+            <option value="Needs Manual Review">Manual Review</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+        </div>
+
         {loading ? (
           <p className="text-gray-500">Loading candidates...</p>
+        ) : filteredCandidates.length === 0 ? (
+          <p className="text-gray-500">No matching candidates found.</p>
         ) : (
           <table className="w-full">
             <thead>
               <tr className="text-left text-gray-500 border-b">
                 <th className="pb-4">Candidate</th>
-                <th className="pb-4">Role</th>
+                <th className="pb-4">Email</th>
                 <th className="pb-4">Skills</th>
                 <th className="pb-4">Score</th>
                 <th className="pb-4">Status</th>
@@ -425,24 +619,212 @@ function Candidates() {
             </thead>
 
             <tbody>
-              {allCandidates.map((candidate, index) => (
-                <Candidate
-                  key={candidate.id || index}
-                  name={candidate.name || "Candidate"}
-                  role={candidate.role || "Uploaded Resume"}
-                  skills={
-                    Array.isArray(candidate.skills)
+              {filteredCandidates.map((candidate, index) => (
+                <tr
+                  key={candidate._id || candidate.id || index}
+                  onClick={() => {
+                    setSelectedCandidate(candidate);
+                    setJobDescription("");
+                    setJobMatchResult(null);
+                  }}
+                  className="row-animated border-b hover:bg-gray-50 cursor-pointer"
+                >
+                  <td className="py-5 font-semibold">
+                    <div>{candidate.name || "Candidate"}</div>
+                    <div className="text-xs text-gray-400 font-normal">
+                      {candidate.fileName || "Uploaded Resume"}
+                    </div>
+                  </td>
+
+                  <td>{candidate.email || "Not Found"}</td>
+
+                  <td>
+                    {Array.isArray(candidate.skills)
                       ? candidate.skills.join(", ")
-                      : candidate.skills
-                  }
-                  score={candidate.score || "92%"}
-                  status={candidate.status || "Analyzed"}
-                />
+                      : candidate.skills}
+                  </td>
+
+                  <td>
+                    <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold">
+                      {candidate.scoreDisplay || candidate.score}
+                    </span>
+                  </td>
+
+                  <td>
+                    <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">
+                      {candidate.status || "Analyzed"}
+                    </span>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {selectedCandidate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 overflow-y-auto p-6">
+          <div className="card-animated bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold">Candidate Details</h2>
+
+              <button
+                onClick={() => setSelectedCandidate(null)}
+                className="btn-animated bg-red-500 text-white px-4 py-2 rounded-xl"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-5">
+              <div className="card-animated bg-gray-50 p-5 rounded-2xl">
+                <p className="text-gray-500">Name</p>
+                <h3 className="font-bold text-xl">{selectedCandidate.name}</h3>
+              </div>
+
+              <div className="card-animated bg-gray-50 p-5 rounded-2xl">
+                <p className="text-gray-500">Score</p>
+                <h3 className="font-bold text-2xl text-green-600">
+                  {selectedCandidate.scoreDisplay || selectedCandidate.score}
+                </h3>
+              </div>
+
+              <div className="card-animated bg-gray-50 p-5 rounded-2xl">
+                <p className="text-gray-500">Email</p>
+                <h3 className="font-semibold">
+                  {selectedCandidate.email || "Not Found"}
+                </h3>
+              </div>
+
+              <div className="card-animated bg-gray-50 p-5 rounded-2xl">
+                <p className="text-gray-500">Status</p>
+                <h3 className="font-semibold">{selectedCandidate.status}</h3>
+              </div>
+            </div>
+
+            <div className="mt-6 card-animated bg-gray-50 p-5 rounded-2xl">
+              <p className="text-gray-500 mb-3">Skills</p>
+
+              <div className="flex flex-wrap gap-2">
+                {(Array.isArray(selectedCandidate.skills)
+                  ? selectedCandidate.skills
+                  : String(selectedCandidate.skills).split(",")
+                ).map((skill) => (
+                  <span
+                    key={skill}
+                    className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 card-animated bg-gray-50 p-5 rounded-2xl">
+              <p className="text-gray-500">Resume File</p>
+              <h3 className="font-semibold">
+                {selectedCandidate.fileName || "Uploaded Resume"}
+              </h3>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() =>
+                  updateStatus(selectedCandidate._id, "Shortlist Candidate")
+                }
+                className="btn-animated bg-green-600 text-white px-5 py-3 rounded-xl font-bold"
+              >
+                ✅ Shortlist
+              </button>
+
+              <button
+                onClick={() =>
+                  updateStatus(selectedCandidate._id, "Needs Manual Review")
+                }
+                className="btn-animated bg-yellow-500 text-white px-5 py-3 rounded-xl font-bold"
+              >
+                🟡 Manual Review
+              </button>
+
+              <button
+                onClick={() => updateStatus(selectedCandidate._id, "Rejected")}
+                className="btn-animated bg-red-600 text-white px-5 py-3 rounded-xl font-bold"
+              >
+                ❌ Reject
+              </button>
+            </div>
+
+            <div className="mt-6 card-animated bg-purple-50 border border-purple-200 p-5 rounded-2xl">
+              <h3 className="font-bold text-xl mb-3">
+                Job Description Matching
+              </h3>
+
+              <textarea
+                rows={5}
+                value={jobDescription}
+                onChange={(e) => setJobDescription(e.target.value)}
+                placeholder="Paste job description here... Example: React, TypeScript, Node.js, MongoDB"
+                className="w-full border p-4 rounded-xl"
+              />
+
+              <button
+                onClick={handleJobMatch}
+                className="btn-animated mt-4 bg-purple-600 text-white px-6 py-3 rounded-xl font-bold"
+              >
+                Match With Job
+              </button>
+
+              {jobMatchResult && (
+                <div className="mt-5 bg-white border rounded-2xl p-5">
+                  <h3 className="text-xl font-bold mb-3">
+                    Job Match Result
+                  </h3>
+
+                  <p>
+                    <b>Match Score:</b> {jobMatchResult.matchScore}
+                  </p>
+
+                  <p className="mt-2">
+                    <b>Recommendation:</b> {jobMatchResult.recommendation}
+                  </p>
+
+                  <div className="mt-4">
+                    <p className="font-bold text-green-700">
+                      Matched Skills:
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {jobMatchResult.matchedSkills?.map((skill: string) => (
+                        <span
+                          key={skill}
+                          className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-semibold"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="font-bold text-red-700">
+                      Missing Skills:
+                    </p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {jobMatchResult.missingSkills?.map((skill: string) => (
+                        <span
+                          key={skill}
+                          className="bg-red-100 text-red-700 px-3 py-1 rounded-full font-semibold"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -453,10 +835,12 @@ function Jobs() {
   return (
     <div className="p-6 grid grid-cols-2 gap-6">
       {jobs.map((job) => (
-        <div key={job} className="bg-white p-8 rounded-3xl shadow-sm">
+        <div key={job} className="card-animated bg-white p-8 rounded-3xl shadow-sm">
           <h2 className="text-2xl font-bold">{job}</h2>
           <p className="text-gray-500 mt-3">AI will match resumes with this job description.</p>
-          <button className="mt-6 bg-indigo-600 text-white px-5 py-3 rounded-xl">View Applicants</button>
+          <button className="btn-animated mt-6 bg-indigo-600 text-white px-5 py-3 rounded-xl">
+            View Applicants
+          </button>
         </div>
       ))}
     </div>
@@ -466,13 +850,15 @@ function Jobs() {
 function SettingsPage() {
   return (
     <div className="p-6">
-      <div className="bg-white rounded-3xl p-8 shadow-sm max-w-2xl">
+      <div className="card-animated bg-white rounded-3xl p-8 shadow-sm max-w-2xl">
         <h2 className="text-3xl font-bold mb-6">Settings</h2>
 
         <input className="w-full border p-4 rounded-xl mb-4" placeholder="Company Name" />
         <input className="w-full border p-4 rounded-xl mb-4" placeholder="Recruiter Email" />
 
-        <button className="bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold">Save Settings</button>
+        <button className="btn-animated bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold">
+          Save Settings
+        </button>
       </div>
     </div>
   );
@@ -480,38 +866,10 @@ function SettingsPage() {
 
 function Card({ title, value }: { title: string; value: string }) {
   return (
-    <div className="bg-white rounded-3xl p-6 shadow-sm">
+    <div className="card-animated bg-white rounded-3xl p-6 shadow-sm">
       <p className="text-gray-500">{title}</p>
       <h2 className="text-4xl font-bold mt-2">{value}</h2>
     </div>
-  );
-}
-
-function Candidate({
-  name,
-  role,
-  skills,
-  score,
-  status,
-}: {
-  name: string;
-  role: string;
-  skills: string;
-  score: string;
-  status: string;
-}) {
-  return (
-    <tr className="border-b hover:bg-gray-50">
-      <td className="py-5 font-semibold">{name}</td>
-      <td>{role}</td>
-      <td>{skills}</td>
-      <td>
-        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold">{score}</span>
-      </td>
-      <td>
-        <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">{status}</span>
-      </td>
-    </tr>
   );
 }
 
