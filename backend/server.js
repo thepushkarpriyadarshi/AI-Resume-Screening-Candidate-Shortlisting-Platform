@@ -6,6 +6,8 @@ const dns = require("dns");
 const dotenv = require("dotenv");
 const mongoose = require("mongoose");
 const pdfParse = require("pdf-parse/lib/pdf-parse");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 dotenv.config();
 
@@ -37,11 +39,38 @@ const candidateSchema = new mongoose.Schema(
     score: String,
     status: String,
     fileName: String,
+    filePath: String,
   },
   { timestamps: true }
 );
 
 const Candidate = mongoose.model("Candidate", candidateSchema);
+const jobSchema = new mongoose.Schema(
+  {
+    title: String,
+    skills: [String],
+    experience: String,
+    location: String,
+    salary: String,
+    description: String,
+  },
+  { timestamps: true }
+);
+
+const Job = mongoose.model("Job", jobSchema);
+const userSchema = new mongoose.Schema(
+  {
+    name: String,
+    email: {
+      type: String,
+      unique: true,
+    },
+    password: String,
+  },
+  { timestamps: true }
+);
+
+const User = mongoose.model("User", userSchema);
 
 /* Multer Setup */
 const storage = multer.diskStorage({
@@ -153,6 +182,96 @@ function calculateScore(skills) {
 }
 
 /* Routes */
+app.post("/api/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+    });
+
+    res.json({
+      success: true,
+      message: "Registration successful",
+      user,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Registration failed",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
+
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        email: user.email,
+      },
+      process.env.JWT_SECRET || "hiresmart_secret",
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Login failed",
+      error: error.message,
+    });
+  }
+});
+
 app.get("/", (req, res) => {
   res.send("Backend Running");
 });
@@ -201,6 +320,7 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
         score: analysis.score,
         status: analysis.recommendation,
         fileName: req.file.originalname,
+        filePath: req.file.path,
       });
     }
 
@@ -262,6 +382,7 @@ app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
             score: analysis.score,
             status: analysis.recommendation,
             fileName: file.originalname,
+            filePath: file.path,
           });
         }
 
@@ -457,6 +578,219 @@ app.post("/api/match-job", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Job matching failed",
+      error: error.message,
+    });
+  }
+});
+
+app.delete("/api/candidates/:id", async (req, res) => {
+  try {
+    const candidate = await Candidate.findByIdAndDelete(req.params.id);
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Candidate deleted successfully",
+      candidate,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Delete failed",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/candidates/:id/download", async (req, res) => {
+  try {
+    const candidate = await Candidate.findById(req.params.id);
+
+    if (!candidate) {
+      return res.status(404).json({
+        success: false,
+        message: "Candidate not found",
+      });
+    }
+
+    let resumePath = candidate.filePath;
+
+    if (!resumePath && candidate.fileName) {
+      const files = fs.readdirSync("uploads");
+
+      const matchedFile = files.find((file) =>
+        file.toLowerCase().includes(candidate.fileName.toLowerCase())
+      );
+
+      if (matchedFile) {
+        resumePath = "uploads/" + matchedFile;
+      }
+    }
+
+    if (!resumePath || !fs.existsSync(resumePath)) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Resume file not found. This old candidate may need to upload resume again.",
+      });
+    }
+
+    res.download(resumePath, candidate.fileName || "resume.pdf");
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Resume download failed",
+      error: error.message,
+    });
+  }
+});
+
+app.post("/api/jobs", async (req, res) => {
+  try {
+    const { title, skills, experience, location, salary, description } =
+      req.body;
+
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        message: "Job title is required",
+      });
+    }
+
+    const job = await Job.create({
+      title,
+      skills: Array.isArray(skills)
+        ? skills
+        : String(skills || "")
+            .split(",")
+            .map((skill) => skill.trim())
+            .filter(Boolean),
+      experience,
+      location,
+      salary,
+      description,
+    });
+
+    res.json({
+      success: true,
+      message: "Job created successfully",
+      job,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Job create failed",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/jobs", async (req, res) => {
+  try {
+    const jobs = await Job.find().sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      jobs,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Jobs fetch failed",
+      error: error.message,
+    });
+  }
+});
+
+app.delete("/api/jobs/:id", async (req, res) => {
+  try {
+    const job = await Job.findByIdAndDelete(req.params.id);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Job deleted successfully",
+      job,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Job delete failed",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/jobs/:id/match-candidates", async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    const candidates = await Candidate.find();
+
+    const results = candidates.map((candidate) => {
+      const candidateSkills = (candidate.skills || []).map((skill) =>
+        skill.toLowerCase()
+      );
+
+      const jobSkills = (job.skills || []).map((skill) =>
+        skill.toLowerCase()
+      );
+
+      const matchedSkills = jobSkills.filter((skill) =>
+        candidateSkills.includes(skill)
+      );
+
+      const missingSkills = jobSkills.filter(
+        (skill) => !candidateSkills.includes(skill)
+      );
+
+      const matchScore =
+        jobSkills.length > 0
+          ? Math.round((matchedSkills.length / jobSkills.length) * 100)
+          : 0;
+
+      return {
+        candidateId: candidate._id,
+        name: candidate.name,
+        email: candidate.email,
+        score: candidate.score,
+        status: candidate.status,
+        matchedSkills,
+        missingSkills,
+        matchScore,
+      };
+    });
+
+    results.sort((a, b) => b.matchScore - a.matchScore);
+
+    res.json({
+      success: true,
+      job,
+      matches: results,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Matching failed",
       error: error.message,
     });
   }

@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import { ReactNode, useEffect, useState } from "react";
 import axios from "axios";
 import {
@@ -19,7 +20,17 @@ import {
   LogOut,
   FileText,
 } from "lucide-react";
-
+import {
+  PieChart,
+  Pie,
+  Cell,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+} from "recharts";
 type CandidateType = {
   _id?: string;
   id?: number;
@@ -31,6 +42,7 @@ type CandidateType = {
   scoreDisplay?: string;
   status: string;
   fileName?: string;
+  filePath?: string;
 };
 
 function App() {
@@ -52,17 +64,32 @@ function App() {
 }
 
 function Protected({ children }: { children: ReactNode }) {
-  const isLogin = localStorage.getItem("isLogin");
-  return isLogin ? children : <Navigate to="/login" />;
+  const token = localStorage.getItem("token");
+  return token ? children : <Navigate to="/login" />;
 }
 
 function Login() {
   const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    localStorage.setItem("isLogin", "true");
-    navigate("/dashboard");
+
+    try {
+      const response = await axios.post("http://localhost:5000/api/login", {
+        email,
+        password,
+      });
+
+      if (response.data.success) {
+        localStorage.setItem("token", response.data.token);
+        localStorage.setItem("user", JSON.stringify(response.data.user));
+        navigate("/dashboard");
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Login failed");
+    }
   }
 
   return (
@@ -77,19 +104,40 @@ function Login() {
       </div>
 
       <div className="w-full md:w-1/2 flex items-center justify-center p-8">
-        <form onSubmit={handleLogin} className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-md">
+        <form
+          onSubmit={handleLogin}
+          className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-md"
+        >
           <h2 className="text-4xl font-bold mb-2">Login</h2>
           <p className="text-gray-500 mb-8">Welcome back recruiter</p>
 
-          <input className="w-full border p-4 rounded-xl mb-4" placeholder="Email" type="email" required />
-          <input className="w-full border p-4 rounded-xl mb-6" placeholder="Password" type="password" required />
+          <input
+            className="w-full border p-4 rounded-xl mb-4"
+            placeholder="Email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
+          <input
+            className="w-full border p-4 rounded-xl mb-6"
+            placeholder="Password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
 
           <button className="btn-animated w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">
             Login
           </button>
 
           <p className="text-center mt-6">
-            Don’t have account? <Link to="/register" className="text-indigo-600 font-bold">Register</Link>
+            Don’t have account?{" "}
+            <Link to="/register" className="text-indigo-600 font-bold">
+              Register
+            </Link>
           </p>
         </form>
       </div>
@@ -99,11 +147,27 @@ function Login() {
 
 function Register() {
   const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  function handleRegister(e: React.FormEvent<HTMLFormElement>) {
+  async function handleRegister(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    localStorage.setItem("isLogin", "true");
-    navigate("/dashboard");
+
+    try {
+      const response = await axios.post("http://localhost:5000/api/register", {
+        name,
+        email,
+        password,
+      });
+
+      if (response.data.success) {
+        alert("Registration successful. Please login.");
+        navigate("/login");
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.message || "Registration failed");
+    }
   }
 
   return (
@@ -111,25 +175,55 @@ function Register() {
       <div className="hidden md:flex w-1/2 bg-gradient-to-br from-[#0f172a] to-[#7c3aed] text-white items-center justify-center p-16">
         <div>
           <h1 className="text-6xl font-bold">Create Account</h1>
-          <p className="text-xl mt-5 text-gray-200">Start hiring smarter with AI</p>
+          <p className="text-xl mt-5 text-gray-200">
+            Start hiring smarter with AI
+          </p>
         </div>
       </div>
 
       <div className="w-full md:w-1/2 flex items-center justify-center p-8">
-        <form onSubmit={handleRegister} className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-md">
+        <form
+          onSubmit={handleRegister}
+          className="bg-white p-10 rounded-3xl shadow-xl w-full max-w-md"
+        >
           <h2 className="text-4xl font-bold mb-2">Register</h2>
           <p className="text-gray-500 mb-8">Create recruiter account</p>
 
-          <input className="w-full border p-4 rounded-xl mb-4" placeholder="Full Name" required />
-          <input className="w-full border p-4 rounded-xl mb-4" placeholder="Email" type="email" required />
-          <input className="w-full border p-4 rounded-xl mb-6" placeholder="Password" type="password" required />
+          <input
+            className="w-full border p-4 rounded-xl mb-4"
+            placeholder="Full Name"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+
+          <input
+            className="w-full border p-4 rounded-xl mb-4"
+            placeholder="Email"
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
+          <input
+            className="w-full border p-4 rounded-xl mb-6"
+            placeholder="Password"
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
 
           <button className="btn-animated w-full bg-indigo-600 text-white py-4 rounded-xl font-bold">
             Create Account
           </button>
 
           <p className="text-center mt-6">
-            Already have account? <Link to="/login" className="text-indigo-600 font-bold">Login</Link>
+            Already have account?{" "}
+            <Link to="/login" className="text-indigo-600 font-bold">
+              Login
+            </Link>
           </p>
         </form>
       </div>
@@ -140,10 +234,11 @@ function Register() {
 function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
-  function logout() {
-    localStorage.removeItem("isLogin");
-    navigate("/login");
-  }
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  navigate("/login");
+}
 
   return (
     <div className="min-h-screen bg-[#f5f7ff] flex">
@@ -210,6 +305,30 @@ function Dashboard() {
     fetchStats();
   }, []);
 
+  const chartData = [
+  {
+    name: "Shortlisted",
+    value: stats.shortlisted,
+  },
+  {
+    name: "Manual Review",
+    value: stats.manualReview,
+  },
+  {
+    name: "Rejected",
+    value:
+      stats.totalCandidates -
+      stats.shortlisted -
+      stats.manualReview,
+  },
+];
+
+const COLORS = [
+  "#22c55e", // Green
+  "#f59e0b", // Yellow
+  "#ef4444", // Red
+];
+
   const fetchStats = async () => {
     try {
       const response = await axios.get("http://localhost:5000/api/stats");
@@ -228,7 +347,10 @@ function Dashboard() {
     <>
       <section className="m-6 bg-gradient-to-r from-[#0f172a] via-[#312e81] to-[#7c3aed] rounded-[35px] p-10 text-white shadow-2xl">
         <h1 className="text-5xl font-bold leading-tight">
-          AI Resume Screening & <span className="text-purple-300">Candidate Shortlisting</span>
+          AI Resume Screening &{" "}
+          <span className="text-purple-300">
+            Candidate Shortlisting
+          </span>
         </h1>
 
         <p className="mt-5 text-gray-200 text-lg">
@@ -243,12 +365,64 @@ function Dashboard() {
           </div>
         </div>
       ) : (
-        <section className="px-6 grid grid-cols-4 gap-6">
-          <Card title="Total Candidates" value={String(stats.totalCandidates)} />
-          <Card title="Shortlisted" value={String(stats.shortlisted)} />
-          <Card title="Manual Review" value={String(stats.manualReview)} />
-          <Card title="Average Score" value={stats.averageScore} />
-        </section>
+        <>
+          <section className="px-6 grid grid-cols-4 gap-6">
+            <Card title="Total Candidates" value={String(stats.totalCandidates)} />
+            <Card title="Shortlisted" value={String(stats.shortlisted)} />
+            <Card title="Manual Review" value={String(stats.manualReview)} />
+            <Card title="Average Score" value={stats.averageScore} />
+          </section>
+
+          <div className="grid grid-cols-2 gap-6 px-6 mt-6">
+            <div className="card-animated bg-white rounded-3xl p-6 shadow-sm">
+              <h2 className="text-2xl font-bold mb-4">
+                Candidate Status Distribution
+              </h2>
+
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                   data={chartData}
+                   dataKey="value"
+                    nameKey="name"
+                   outerRadius={110}
+                   innerRadius={50}
+                   paddingAngle={4}
+                 label
+     >
+  {chartData.map((entry, index) => (
+    <Cell
+      key={`cell-${index}`}
+      fill={COLORS[index % COLORS.length]}
+    />
+  ))}
+</Pie>
+
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card-animated bg-white rounded-3xl p-6 shadow-sm">
+              <h2 className="text-2xl font-bold mb-4">
+                Recruitment Analytics
+              </h2>
+
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={chartData}>
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar
+                 dataKey="value"
+                 radius={[12, 12, 0, 0]}
+                  fill="#6366f1"
+                 />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>
       )}
     </>
   );
@@ -529,6 +703,50 @@ function Candidates() {
     }
   };
 
+const deleteCandidate = async (id: string | undefined) => {
+  if (!id) return;
+
+  const confirmDelete = window.confirm(
+    "Are you sure you want to delete this candidate?"
+  );
+
+  if (!confirmDelete) return;
+
+  try {
+    await axios.delete(
+      `http://localhost:5000/api/candidates/${id}`
+    );
+
+    await fetchCandidates();
+    setSelectedCandidate(null);
+
+    alert("Candidate deleted successfully");
+  } catch (error) {
+    console.log("Delete candidate failed", error);
+    alert("Candidate delete failed");
+  }
+};
+
+const exportToExcel = () => {
+  const excelData = candidates.map((candidate) => ({
+    Name: candidate.name,
+    Email: candidate.email || "Not Found",
+    Skills: Array.isArray(candidate.skills)
+      ? candidate.skills.join(", ")
+      : candidate.skills,
+    Score: candidate.scoreDisplay || candidate.score,
+    Status: candidate.status,
+    FileName: candidate.fileName || "Uploaded Resume",
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(excelData);
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Candidates");
+
+  XLSX.writeFile(workbook, "candidates-report.xlsx");
+};
+
   const handleJobMatch = async () => {
     if (!selectedCandidate?._id) return;
 
@@ -555,32 +773,51 @@ function Candidates() {
   }, []);
 
   const filteredCandidates = candidates.filter((candidate) => {
-    const searchText = search.toLowerCase();
+  const searchText = search.toLowerCase();
 
-    const matchesSearch =
-      candidate.name?.toLowerCase().includes(searchText) ||
-      candidate.email?.toLowerCase().includes(searchText) ||
-      String(candidate.skills).toLowerCase().includes(searchText);
+  const matchesSearch =
+    candidate.name?.toLowerCase().includes(searchText) ||
+    candidate.email?.toLowerCase().includes(searchText) ||
+    String(candidate.skills).toLowerCase().includes(searchText);
 
-    const matchesStatus =
-      statusFilter === "All" || candidate.status === statusFilter;
+  const matchesStatus =
+    statusFilter === "All" || candidate.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
-  });
+  return matchesSearch && matchesStatus;
+});
 
-  return (
+const getNumericScore = (score: string | number) => {
+  if (typeof score === "number") return score;
+  return parseInt(String(score).replace("%", "")) || 0;
+};
+
+const rankedCandidates = [...filteredCandidates].sort(
+  (a, b) => getNumericScore(b.score) - getNumericScore(a.score)
+);
+
+return (
+
     <div className="p-6">
-      <div className="card-animated bg-white rounded-3xl p-8 shadow-sm">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Candidates</h2>
+  <div className="card-animated bg-white rounded-3xl p-8 shadow-sm">
+    <div className="flex justify-between items-center mb-6">
+      <h2 className="text-2xl font-bold">Candidates</h2>
 
-          <button
-            onClick={fetchCandidates}
-            className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl"
-          >
-            Refresh
-          </button>
-        </div>
+      <div className="flex gap-3">
+        <button
+          onClick={exportToExcel}
+          className="btn-animated bg-green-600 text-white px-5 py-3 rounded-xl font-bold"
+        >
+          📊 Export Excel
+        </button>
+
+        <button
+          onClick={fetchCandidates}
+          className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl font-bold"
+        >
+          🔄 Refresh
+        </button>
+      </div>
+    </div>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
           <input
@@ -619,7 +856,7 @@ function Candidates() {
             </thead>
 
             <tbody>
-              {filteredCandidates.map((candidate, index) => (
+              {rankedCandidates.map((candidate, index) => (
                 <tr
                   key={candidate._id || candidate.id || index}
                   onClick={() => {
@@ -631,6 +868,11 @@ function Candidates() {
                 >
                   <td className="py-5 font-semibold">
                     <div>{candidate.name || "Candidate"}</div>
+                    {index === 0 && (
+                    <span className="inline-block mt-2 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold">
+                    🏆 Best Match
+                  </span>
+                     )}
                     <div className="text-xs text-gray-400 font-normal">
                       {candidate.fileName || "Uploaded Resume"}
                     </div>
@@ -727,32 +969,53 @@ function Candidates() {
               </h3>
             </div>
 
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() =>
-                  updateStatus(selectedCandidate._id, "Shortlist Candidate")
-                }
-                className="btn-animated bg-green-600 text-white px-5 py-3 rounded-xl font-bold"
-              >
-                ✅ Shortlist
-              </button>
+            <div className="mt-4">
+  <button
+    onClick={() =>
+      window.open(
+        `http://localhost:5000/api/candidates/${selectedCandidate._id}/download`,
+        "_blank"
+      )
+    }
+    className="btn-animated bg-blue-600 text-white px-5 py-3 rounded-xl font-bold"
+  >
+    📥 Download Resume
+  </button>
+</div>
 
-              <button
-                onClick={() =>
-                  updateStatus(selectedCandidate._id, "Needs Manual Review")
-                }
-                className="btn-animated bg-yellow-500 text-white px-5 py-3 rounded-xl font-bold"
-              >
-                🟡 Manual Review
-              </button>
+            <div className="mt-6 flex gap-3 flex-wrap">
+  <button
+    onClick={() =>
+      updateStatus(selectedCandidate._id, "Shortlist Candidate")
+    }
+    className="btn-animated bg-green-600 text-white px-5 py-3 rounded-xl font-bold"
+  >
+    ✅ Shortlist
+  </button>
 
-              <button
-                onClick={() => updateStatus(selectedCandidate._id, "Rejected")}
-                className="btn-animated bg-red-600 text-white px-5 py-3 rounded-xl font-bold"
-              >
-                ❌ Reject
-              </button>
-            </div>
+  <button
+    onClick={() =>
+      updateStatus(selectedCandidate._id, "Needs Manual Review")
+    }
+    className="btn-animated bg-yellow-500 text-white px-5 py-3 rounded-xl font-bold"
+  >
+    🟡 Manual Review
+  </button>
+
+  <button
+    onClick={() => updateStatus(selectedCandidate._id, "Rejected")}
+    className="btn-animated bg-red-600 text-white px-5 py-3 rounded-xl font-bold"
+  >
+    ❌ Reject
+  </button>
+
+  <button
+    onClick={() => deleteCandidate(selectedCandidate._id)}
+    className="btn-animated bg-black text-white px-5 py-3 rounded-xl font-bold"
+  >
+    🗑️ Delete Candidate
+  </button>
+</div>
 
             <div className="mt-6 card-animated bg-purple-50 border border-purple-200 p-5 rounded-2xl">
               <h3 className="font-bold text-xl mb-3">
@@ -775,10 +1038,20 @@ function Candidates() {
               </button>
 
               {jobMatchResult && (
-                <div className="mt-5 bg-white border rounded-2xl p-5">
-                  <h3 className="text-xl font-bold mb-3">
-                    Job Match Result
-                  </h3>
+              <div className="mt-5 bg-white border rounded-2xl p-5">
+
+              <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">
+               Job Match Result
+               </h3>
+
+               <button
+                onClick={() => setJobMatchResult(null)}
+                 className="btn-animated bg-red-500 text-white px-4 py-2 rounded-xl"
+                 >
+                  Close
+                </button>
+                 </div>
 
                   <p>
                     <b>Match Score:</b> {jobMatchResult.matchScore}
@@ -830,19 +1103,311 @@ function Candidates() {
 }
 
 function Jobs() {
-  const jobs = ["Frontend Developer", "Backend Developer", "Full Stack Developer", "AI/ML Intern"];
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [matchedCandidates, setMatchedCandidates] = useState<any[]>([]);
+  const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const [title, setTitle] = useState("");
+  const [skills, setSkills] = useState("");
+  const [experience, setExperience] = useState("");
+  const [location, setLocation] = useState("");
+  const [salary, setSalary] = useState("");
+  const [description, setDescription] = useState("");
+
+  const fetchJobs = async () => {
+    try {
+      const response = await axios.get("http://localhost:5000/api/jobs");
+      setJobs(response.data.jobs || []);
+    } catch (error) {
+      console.log("Jobs fetch failed", error);
+    }
+  };
+
+  const matchCandidates = async (job: any) => {
+    try {
+      const response = await axios.get(
+        `http://localhost:5000/api/jobs/${job._id}/match-candidates`
+      );
+
+      setMatchedCandidates(response.data.matches || []);
+      setSelectedJob(job);
+    } catch (error) {
+      console.log("Matching failed", error);
+      alert("Candidate matching failed");
+    }
+  };
+
+  const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    try {
+      await axios.post("http://localhost:5000/api/jobs", {
+        title,
+        skills,
+        experience,
+        location,
+        salary,
+        description,
+      });
+
+      setTitle("");
+      setSkills("");
+      setExperience("");
+      setLocation("");
+      setSalary("");
+      setDescription("");
+      setShowForm(false);
+
+      fetchJobs();
+      alert("Job created successfully");
+    } catch (error) {
+      console.log("Job create failed", error);
+      alert("Job create failed");
+    }
+  };
+
+  const deleteJob = async (id: string) => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this job?"
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await axios.delete(`http://localhost:5000/api/jobs/${id}`);
+      fetchJobs();
+      alert("Job deleted successfully");
+    } catch (error) {
+      console.log("Job delete failed", error);
+      alert("Job delete failed");
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
 
   return (
-    <div className="p-6 grid grid-cols-2 gap-6">
-      {jobs.map((job) => (
-        <div key={job} className="card-animated bg-white p-8 rounded-3xl shadow-sm">
-          <h2 className="text-2xl font-bold">{job}</h2>
-          <p className="text-gray-500 mt-3">AI will match resumes with this job description.</p>
-          <button className="btn-animated mt-6 bg-indigo-600 text-white px-5 py-3 rounded-xl">
-            View Applicants
-          </button>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-3xl font-bold">Jobs</h2>
+          <p className="text-gray-500">
+            Create jobs and manage openings for resume screening.
+          </p>
         </div>
-      ))}
+
+        <button
+          onClick={() => setShowForm(true)}
+          className="btn-animated bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold"
+        >
+          + Create Job
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-6">
+          <form
+            onSubmit={createJob}
+            className="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl"
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold">Create New Job</h2>
+
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="btn-animated bg-red-500 text-white px-4 py-2 rounded-xl"
+              >
+                Close
+              </button>
+            </div>
+
+            <input
+              className="w-full border p-4 rounded-xl mb-4"
+              placeholder="Job Title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
+
+            <input
+              className="w-full border p-4 rounded-xl mb-4"
+              placeholder="Required Skills comma separated, e.g. React, Node.js, MongoDB"
+              value={skills}
+              onChange={(e) => setSkills(e.target.value)}
+            />
+
+            <div className="grid grid-cols-3 gap-4">
+              <input
+                className="border p-4 rounded-xl mb-4"
+                placeholder="Experience"
+                value={experience}
+                onChange={(e) => setExperience(e.target.value)}
+              />
+
+              <input
+                className="border p-4 rounded-xl mb-4"
+                placeholder="Location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+              />
+
+              <input
+                className="border p-4 rounded-xl mb-4"
+                placeholder="Salary"
+                value={salary}
+                onChange={(e) => setSalary(e.target.value)}
+              />
+            </div>
+
+            <textarea
+              className="w-full border p-4 rounded-xl mb-4"
+              rows={5}
+              placeholder="Job Description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+
+            <button className="btn-animated bg-indigo-600 text-white px-8 py-4 rounded-xl font-bold">
+              Save Job
+            </button>
+          </form>
+        </div>
+      )}
+
+      {jobs.length === 0 ? (
+        <div className="bg-white rounded-3xl p-8 shadow-sm">
+          <p className="text-gray-500">No jobs created yet.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-6">
+          {jobs.map((job) => (
+            <div
+              key={job._id}
+              className="card-animated bg-white p-8 rounded-3xl shadow-sm"
+            >
+              <h2 className="text-2xl font-bold">{job.title}</h2>
+
+              <p className="text-gray-500 mt-3">
+                {job.description || "No description added."}
+              </p>
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                {job.skills?.map((skill: string) => (
+                  <span
+                    key={skill}
+                    className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full font-semibold"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mt-5 text-sm">
+                <div className="bg-gray-50 p-3 rounded-xl">
+                  <p className="text-gray-500">Experience</p>
+                  <b>{job.experience || "N/A"}</b>
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-xl">
+                  <p className="text-gray-500">Location</p>
+                  <b>{job.location || "N/A"}</b>
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-xl">
+                  <p className="text-gray-500">Salary</p>
+                  <b>{job.salary || "N/A"}</b>
+                </div>
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => matchCandidates(job)}
+                  className="btn-animated bg-purple-600 text-white px-5 py-3 rounded-xl font-bold"
+                >
+                  Match Candidates
+                </button>
+
+                <button
+                  onClick={() => deleteJob(job._id)}
+                  className="btn-animated bg-red-600 text-white px-5 py-3 rounded-xl font-bold"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selectedJob && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-5xl shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-bold">
+                Top Matches - {selectedJob.title}
+              </h2>
+
+              <button
+                onClick={() => {
+                  setSelectedJob(null);
+                  setMatchedCandidates([]);
+                }}
+                className="btn-animated bg-red-500 text-white px-4 py-2 rounded-xl"
+              >
+                Close
+              </button>
+            </div>
+
+            <table className="w-full">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="pb-4">Candidate</th>
+                  <th className="pb-4">Match Score</th>
+                  <th className="pb-4">Matched Skills</th>
+                  <th className="pb-4">Status</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {matchedCandidates.map((candidate) => (
+                  <tr key={candidate.candidateId} className="border-b">
+                    <td className="py-4">
+                      <div className="font-bold">{candidate.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {candidate.email}
+                      </div>
+                    </td>
+
+                    <td>
+                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold">
+                        {candidate.matchScore}%
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="flex flex-wrap gap-2">
+                        {candidate.matchedSkills.map((skill: string) => (
+                          <span
+                            key={skill}
+                            className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-sm"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+
+                    <td>{candidate.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -866,7 +1431,7 @@ function SettingsPage() {
 
 function Card({ title, value }: { title: string; value: string }) {
   return (
-    <div className="card-animated bg-white rounded-3xl p-6 shadow-sm">
+    <div className="card-animated bg-white rounded-3xl p-6 shadow-xl border border-gray-100 hover:shadow-2xl">
       <p className="text-gray-500">{title}</p>
       <h2 className="text-4xl font-bold mt-2">{value}</h2>
     </div>
