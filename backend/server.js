@@ -1,3 +1,4 @@
+const axios = require("axios");
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
@@ -45,6 +46,18 @@ const candidateSchema = new mongoose.Schema(
 );
 
 const Candidate = mongoose.model("Candidate", candidateSchema);
+
+const activitySchema = new mongoose.Schema(
+  {
+    action: String,
+    candidateName: String,
+    details: String,
+  },
+  { timestamps: true }
+);
+
+const Activity = mongoose.model("Activity", activitySchema);
+
 const jobSchema = new mongoose.Schema(
   {
     title: String,
@@ -309,26 +322,51 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
         scoreValue >= 75 ? "Shortlist Candidate" : "Needs Manual Review",
     };
 
+    let n8nResult = null;
+
+    try {
+      const n8nResponse = await axios.post(process.env.N8N_WEBHOOK_URL, {
+        candidateName: analysis.name,
+        email: analysis.email,
+        skills: Array.isArray(analysis.skills)
+          ? analysis.skills.join(", ")
+          : analysis.skills,
+        score: scoreValue,
+      });
+
+      n8nResult = n8nResponse.data;
+      console.log("n8n workflow triggered successfully");
+    } catch (n8nError) {
+      console.log("n8n workflow failed:", n8nError.message);
+    }
+
     let savedCandidate = null;
 
     if (mongoose.connection.readyState === 1) {
-      savedCandidate = await Candidate.create({
-        name: analysis.name,
-        email: analysis.email,
-        phone: analysis.phone,
-        skills: analysis.skills,
-        score: analysis.score,
-        status: analysis.recommendation,
-        fileName: req.file.originalname,
-        filePath: req.file.path,
-      });
-    }
+  savedCandidate = await Candidate.create({
+    name: analysis.name,
+    email: analysis.email,
+    phone: analysis.phone,
+    skills: analysis.skills,
+    score: analysis.score,
+    status: analysis.recommendation,
+    fileName: req.file.originalname,
+    filePath: req.file.path,
+  });
+
+  await Activity.create({
+    action: "Resume Uploaded",
+    candidateName: analysis.name,
+    details: `${analysis.name} uploaded resume`,
+  });
+}
 
     res.json({
       success: true,
       message: "Resume Uploaded",
       analysis,
       candidate: savedCandidate,
+      n8nResult,
     });
   } catch (error) {
     console.log("UPLOAD ERROR:", error.message);
@@ -368,29 +406,66 @@ app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
           skills: skills.length ? skills : ["No major skills found"],
           score: scoreValue + "%",
           recommendation:
-            scoreValue >= 75 ? "Shortlist Candidate" : "Needs Manual Review",
+            scoreValue >= 75
+              ? "Shortlist Candidate"
+              : "Needs Manual Review",
         };
+
+        // Trigger n8n Workflow
+        let n8nResult = null;
+
+        try {
+          const n8nResponse = await axios.post(
+            process.env.N8N_WEBHOOK_URL,
+            {
+              candidateName: analysis.name,
+              email: analysis.email,
+              skills: Array.isArray(analysis.skills)
+                ? analysis.skills.join(", ")
+                : analysis.skills,
+              score: scoreValue,
+            }
+          );
+
+          n8nResult = n8nResponse.data;
+
+          console.log(
+            `n8n workflow triggered for ${analysis.name}`
+          );
+        } catch (n8nError) {
+          console.log(
+            `n8n workflow failed for ${analysis.name}:`,
+            n8nError.message
+          );
+        }
 
         let savedCandidate = null;
 
         if (mongoose.connection.readyState === 1) {
-          savedCandidate = await Candidate.create({
-            name: analysis.name,
-            email: analysis.email,
-            phone: analysis.phone,
-            skills: analysis.skills,
-            score: analysis.score,
-            status: analysis.recommendation,
-            fileName: file.originalname,
-            filePath: file.path,
-          });
-        }
+  savedCandidate = await Candidate.create({
+    name: analysis.name,
+    email: analysis.email,
+    phone: analysis.phone,
+    skills: analysis.skills,
+    score: analysis.score,
+    status: analysis.recommendation,
+    fileName: file.originalname,
+    filePath: file.path,
+  });
+
+  await Activity.create({
+    action: "Bulk Resume Uploaded",
+    candidateName: analysis.name,
+    details: `${analysis.name} uploaded through bulk upload`,
+  });
+}
 
         results.push({
           success: true,
           fileName: file.originalname,
           analysis,
           candidate: savedCandidate,
+          n8nResult,
         });
       } catch (fileError) {
         results.push({
@@ -525,12 +600,19 @@ app.put("/api/candidates/:id/status", async (req, res) => {
       });
     }
 
+    await Activity.create({
+  action: status,
+  candidateName: candidate.name,
+  details: `${candidate.name} marked as ${status}`,
+});
+
     res.json({
       success: true,
       message: "Candidate status updated",
       candidate,
     });
-  } catch (error) {
+  } 
+  catch (error) {
     res.status(500).json({
       success: false,
       message: "Status update failed",
@@ -791,6 +873,25 @@ app.get("/api/jobs/:id/match-candidates", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Matching failed",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/activity-logs", async (req, res) => {
+  try {
+    const logs = await Activity.find()
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json({
+      success: true,
+      logs,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Activity logs fetch failed",
       error: error.message,
     });
   }

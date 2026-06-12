@@ -9,6 +9,7 @@ import {
   Link,
   NavLink,
   useNavigate,
+  useLocation,
 } from "react-router-dom";
 import {
   Bell,
@@ -234,6 +235,30 @@ function Register() {
 function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
+  const location = useLocation();
+
+const pageTitle =
+  location.pathname === "/jobs"
+    ? "Job Management"
+    : location.pathname === "/candidates"
+    ? "Candidates"
+    : location.pathname === "/upload"
+    ? "Resume Upload"
+    : location.pathname === "/settings"
+    ? "Settings"
+    : "Recruitment Dashboard";
+
+const pageSubtitle =
+  location.pathname === "/jobs"
+    ? "Create and manage job openings"
+    : location.pathname === "/candidates"
+    ? "Manage candidate profiles"
+    : location.pathname === "/upload"
+    ? "Upload and analyze resumes"
+    : location.pathname === "/settings"
+    ? "Manage application settings"
+    : "AI powered hiring overview";
+
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
@@ -259,16 +284,17 @@ function logout() {
       <main className="flex-1">
         <nav className="bg-white px-8 py-5 flex justify-between items-center shadow-sm">
           <div>
-            <h1 className="text-3xl font-bold">Recruitment Dashboard</h1>
-            <p className="text-gray-500">AI powered hiring overview</p>
+            <h1 className="text-3xl font-bold">{pageTitle}</h1>
+              <p className="text-gray-500">{pageSubtitle}</p>
           </div>
 
-          <div className="flex gap-4 items-center">
-            <Bell className="text-gray-500" />
-            <button className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl">
-              + Create Job
+          
+            <button
+                 onClick={() => navigate("/jobs")}
+                className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl"
+                >
+                 Click for Create Jobs
             </button>
-          </div>
         </nav>
 
         {children}
@@ -301,9 +327,12 @@ function Dashboard() {
 
   const [loading, setLoading] = useState(true);
 
+  const [activities, setActivities] = useState([]);
+
   useEffect(() => {
-    fetchStats();
-  }, []);
+  fetchStats();
+  fetchActivities();
+}, []);
 
   const chartData = [
   {
@@ -343,6 +372,20 @@ const COLORS = [
     }
   };
 
+  const fetchActivities = async () => {
+  try {
+    const response = await axios.get(
+      "http://localhost:5000/api/activity-logs"
+    );
+
+    if (response.data.success) {
+      setActivities(response.data.logs);
+    }
+  } catch (error) {
+    console.log("Activity fetch failed", error);
+  }
+};
+
   return (
     <>
       <section className="m-6 bg-gradient-to-r from-[#0f172a] via-[#312e81] to-[#7c3aed] rounded-[35px] p-10 text-white shadow-2xl">
@@ -378,6 +421,41 @@ const COLORS = [
               <h2 className="text-2xl font-bold mb-4">
                 Candidate Status Distribution
               </h2>
+
+              <div className="px-6 mt-6">
+  <div className="card-animated bg-white rounded-3xl p-6 shadow-sm">
+    <h2 className="text-2xl font-bold mb-4">
+      Recent Activity Logs
+    </h2>
+
+    {activities.length === 0 ? (
+      <p className="text-gray-500">
+        No activity found.
+      </p>
+    ) : (
+      <div className="space-y-3">
+        {activities.slice(0, 10).map((log, index) => (
+          <div
+            key={index}
+            className="border rounded-xl p-4 bg-gray-50"
+          >
+            <p className="font-bold text-indigo-600">
+              {log.action}
+            </p>
+
+            <p className="text-gray-700">
+              {log.details}
+            </p>
+
+            <p className="text-xs text-gray-400">
+              {new Date(log.createdAt).toLocaleString()}
+            </p>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</div>
 
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
