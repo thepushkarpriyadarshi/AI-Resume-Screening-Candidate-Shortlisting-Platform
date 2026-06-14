@@ -33,6 +33,16 @@ mongoose
 
 const candidateSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    jobId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Job",
+    },
+
     name: String,
     email: String,
     phone: String,
@@ -49,6 +59,10 @@ const Candidate = mongoose.model("Candidate", candidateSchema);
 
 const activitySchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     action: String,
     candidateName: String,
     details: String,
@@ -60,6 +74,10 @@ const Activity = mongoose.model("Activity", activitySchema);
 
 const jobSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
     title: String,
     skills: [String],
     experience: String,
@@ -90,6 +108,34 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
+
+function authMiddleware(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: No token provided",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "hiresmart_secret"
+    );
+
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized: Invalid token",
+    });
+  }
+}
 
 const upload = multer({
   storage,
@@ -296,8 +342,29 @@ app.get("/api/db-status", (req, res) => {
   });
 });
 
-app.post("/api/upload", upload.single("resume"), async (req, res) => {
+app.post("/api/upload", authMiddleware, upload.single("resume"), async (req, res) => {
   try {
+    const { jobId } = req.body;
+
+    if (!jobId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a job before uploading resume",
+      });
+    }
+
+    const job = await Job.findOne({
+      _id: jobId,
+      userId: req.user.userId,
+    });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Selected job not found",
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -310,7 +377,23 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
     const text = pdfData.text || "";
 
     const skills = extractSkills(text);
-    const scoreValue = calculateScore(skills);
+
+    const jobSkills = (job.skills || []).map((skill) =>
+      skill.toLowerCase()
+    );
+
+    const resumeSkills = (skills || []).map((skill) =>
+      skill.toLowerCase()
+    );
+
+    const matchedSkills = jobSkills.filter((skill) =>
+      resumeSkills.includes(skill)
+    );
+
+    const scoreValue =
+      jobSkills.length > 0
+        ? Math.round((matchedSkills.length / jobSkills.length) * 100)
+        : 0;
 
     const analysis = {
       name: extractName(text, req.file.originalname),
@@ -332,6 +415,8 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
           ? analysis.skills.join(", ")
           : analysis.skills,
         score: scoreValue,
+        jobTitle: job.title,
+        requiredSkills: job.skills.join(", "),
       });
 
       n8nResult = n8nResponse.data;
@@ -343,23 +428,26 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
     let savedCandidate = null;
 
     if (mongoose.connection.readyState === 1) {
-  savedCandidate = await Candidate.create({
-    name: analysis.name,
-    email: analysis.email,
-    phone: analysis.phone,
-    skills: analysis.skills,
-    score: analysis.score,
-    status: analysis.recommendation,
-    fileName: req.file.originalname,
-    filePath: req.file.path,
-  });
+      savedCandidate = await Candidate.create({
+        userId: req.user.userId,
+        jobId: job._id,
+        name: analysis.name,
+        email: analysis.email,
+        phone: analysis.phone,
+        skills: analysis.skills,
+        score: analysis.score,
+        status: analysis.recommendation,
+        fileName: req.file.originalname,
+        filePath: req.file.path,
+      });
 
-  await Activity.create({
-    action: "Resume Uploaded",
-    candidateName: analysis.name,
-    details: `${analysis.name} uploaded resume`,
-  });
-}
+      await Activity.create({
+        userId: req.user.userId,
+        action: "Resume Uploaded",
+        candidateName: analysis.name,
+        details: `${analysis.name} uploaded resume for ${job.title}`,
+      });
+    }
 
     res.json({
       success: true,
@@ -379,8 +467,29 @@ app.post("/api/upload", upload.single("resume"), async (req, res) => {
   }
 });
 
-app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
+app.post("/api/upload/bulk", authMiddleware, upload.array("resumes", 50), async (req, res) => {
   try {
+    const { jobId } = req.body;
+
+    if (!jobId) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a job before uploading resumes",
+      });
+    }
+
+    const job = await Job.findOne({
+      _id: jobId,
+      userId: req.user.userId,
+    });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Selected job not found",
+      });
+    }
+
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
         success: false,
@@ -397,7 +506,23 @@ app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
         const text = pdfData.text || "";
 
         const skills = extractSkills(text);
-        const scoreValue = calculateScore(skills);
+
+        const jobSkills = (job.skills || []).map((skill) =>
+          skill.toLowerCase()
+        );
+
+        const resumeSkills = (skills || []).map((skill) =>
+          skill.toLowerCase()
+        );
+
+        const matchedSkills = jobSkills.filter((skill) =>
+          resumeSkills.includes(skill)
+        );
+
+        const scoreValue =
+          jobSkills.length > 0
+            ? Math.round((matchedSkills.length / jobSkills.length) * 100)
+            : 0;
 
         const analysis = {
           name: extractName(text, file.originalname),
@@ -406,32 +531,25 @@ app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
           skills: skills.length ? skills : ["No major skills found"],
           score: scoreValue + "%",
           recommendation:
-            scoreValue >= 75
-              ? "Shortlist Candidate"
-              : "Needs Manual Review",
+            scoreValue >= 75 ? "Shortlist Candidate" : "Needs Manual Review",
         };
 
-        // Trigger n8n Workflow
         let n8nResult = null;
 
         try {
-          const n8nResponse = await axios.post(
-            process.env.N8N_WEBHOOK_URL,
-            {
-              candidateName: analysis.name,
-              email: analysis.email,
-              skills: Array.isArray(analysis.skills)
-                ? analysis.skills.join(", ")
-                : analysis.skills,
-              score: scoreValue,
-            }
-          );
+          const n8nResponse = await axios.post(process.env.N8N_WEBHOOK_URL, {
+            candidateName: analysis.name,
+            email: analysis.email,
+            skills: Array.isArray(analysis.skills)
+              ? analysis.skills.join(", ")
+              : analysis.skills,
+            score: scoreValue,
+            jobTitle: job.title,
+            requiredSkills: job.skills.join(", "),
+          });
 
           n8nResult = n8nResponse.data;
-
-          console.log(
-            `n8n workflow triggered for ${analysis.name}`
-          );
+          console.log(`n8n workflow triggered for ${analysis.name}`);
         } catch (n8nError) {
           console.log(
             `n8n workflow failed for ${analysis.name}:`,
@@ -442,23 +560,26 @@ app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
         let savedCandidate = null;
 
         if (mongoose.connection.readyState === 1) {
-  savedCandidate = await Candidate.create({
-    name: analysis.name,
-    email: analysis.email,
-    phone: analysis.phone,
-    skills: analysis.skills,
-    score: analysis.score,
-    status: analysis.recommendation,
-    fileName: file.originalname,
-    filePath: file.path,
-  });
+          savedCandidate = await Candidate.create({
+            userId: req.user.userId,
+            jobId: job._id,
+            name: analysis.name,
+            email: analysis.email,
+            phone: analysis.phone,
+            skills: analysis.skills,
+            score: analysis.score,
+            status: analysis.recommendation,
+            fileName: file.originalname,
+            filePath: file.path,
+          });
 
-  await Activity.create({
-    action: "Bulk Resume Uploaded",
-    candidateName: analysis.name,
-    details: `${analysis.name} uploaded through bulk upload`,
-  });
-}
+          await Activity.create({
+            userId: req.user.userId,
+            action: "Bulk Resume Uploaded",
+            candidateName: analysis.name,
+            details: `${analysis.name} uploaded through bulk upload for ${job.title}`,
+          });
+        }
 
         results.push({
           success: true,
@@ -492,7 +613,7 @@ app.post("/api/upload/bulk", upload.array("resumes", 50), async (req, res) => {
   }
 });
 
-app.get("/api/stats", async (req, res) => {
+app.get("/api/stats", authMiddleware, async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
       return res.json({
@@ -507,7 +628,9 @@ app.get("/api/stats", async (req, res) => {
       });
     }
 
-    const candidates = await Candidate.find();
+    const candidates = await Candidate.find({
+  userId: req.user.userId,
+});
 
     const totalCandidates = candidates.length;
 
@@ -552,7 +675,7 @@ app.get("/api/stats", async (req, res) => {
   }
 });
 
-app.get("/api/candidates", async (req, res) => {
+app.get("/api/candidates", authMiddleware, async (req, res) => {
   try {
     if (mongoose.connection.readyState !== 1) {
       return res.json({
@@ -561,7 +684,9 @@ app.get("/api/candidates", async (req, res) => {
       });
     }
 
-    const candidates = await Candidate.find().sort({ createdAt: -1 });
+    const candidates = await Candidate.find({
+      userId: req.user.userId,
+    }).sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -733,7 +858,7 @@ app.get("/api/candidates/:id/download", async (req, res) => {
   }
 });
 
-app.post("/api/jobs", async (req, res) => {
+app.post("/api/jobs", authMiddleware, async (req, res) => {
   try {
     const { title, skills, experience, location, salary, description } =
       req.body;
@@ -746,6 +871,7 @@ app.post("/api/jobs", async (req, res) => {
     }
 
     const job = await Job.create({
+      userId: req.user.userId,
       title,
       skills: Array.isArray(skills)
         ? skills
@@ -773,9 +899,11 @@ app.post("/api/jobs", async (req, res) => {
   }
 });
 
-app.get("/api/jobs", async (req, res) => {
+app.get("/api/jobs", authMiddleware, async (req, res) => {
   try {
-    const jobs = await Job.find().sort({ createdAt: -1 });
+    const jobs = await Job.find({
+      userId: req.user.userId,
+    }).sort({ createdAt: -1 });
 
     res.json({
       success: true,
@@ -790,9 +918,12 @@ app.get("/api/jobs", async (req, res) => {
   }
 });
 
-app.delete("/api/jobs/:id", async (req, res) => {
+app.delete("/api/jobs/:id", authMiddleware, async (req, res) => {
   try {
-    const job = await Job.findByIdAndDelete(req.params.id);
+    const job = await Job.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.userId,
+    });
 
     if (!job) {
       return res.status(404).json({
@@ -815,9 +946,12 @@ app.delete("/api/jobs/:id", async (req, res) => {
   }
 });
 
-app.get("/api/jobs/:id/match-candidates", async (req, res) => {
+app.get("/api/jobs/:id/match-candidates", authMiddleware, async (req, res) => {
   try {
-    const job = await Job.findById(req.params.id);
+    const job = await Job.findOne({
+      _id: req.params.id,
+      userId: req.user.userId,
+    });
 
     if (!job) {
       return res.status(404).json({
@@ -826,7 +960,9 @@ app.get("/api/jobs/:id/match-candidates", async (req, res) => {
       });
     }
 
-    const candidates = await Candidate.find();
+    const candidates = await Candidate.find({
+      userId: req.user.userId,
+    });
 
     const results = candidates.map((candidate) => {
       const candidateSkills = (candidate.skills || []).map((skill) =>
@@ -878,9 +1014,11 @@ app.get("/api/jobs/:id/match-candidates", async (req, res) => {
   }
 });
 
-app.get("/api/activity-logs", async (req, res) => {
+app.get("/api/activity-logs", authMiddleware, async (req, res) => {
   try {
-    const logs = await Activity.find()
+    const logs = await Activity.find({
+      userId: req.user.userId,
+    })
       .sort({ createdAt: -1 })
       .limit(100);
 

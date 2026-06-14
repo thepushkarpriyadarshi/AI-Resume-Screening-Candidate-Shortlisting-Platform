@@ -237,6 +237,11 @@ function Layout({ children }: { children: ReactNode }) {
 
   const location = useLocation();
 
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  const [showProfile, setShowProfile] = useState(false);
+  
+
 const pageTitle =
   location.pathname === "/jobs"
     ? "Job Management"
@@ -275,6 +280,60 @@ function logout() {
         <SideLink to="/candidates" icon={<Users />} text="Candidates" />
         <SideLink to="/upload" icon={<Upload />} text="Resume Upload" />
         <SideLink to="/settings" icon={<Settings />} text="Settings" />
+<div
+  onClick={() => setShowProfile(!showProfile)}
+  className="mt-8 mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 shadow-lg cursor-pointer hover:scale-105 transition-all duration-300"
+>
+  <div className="flex items-center gap-3">
+    <div className="w-12 h-12 rounded-full bg-white text-indigo-600 flex items-center justify-center font-bold text-lg shrink-0">
+      {user?.name
+        ?.split(" ")
+        .map((word: string) => word[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase() || "U"}
+    </div>
+
+    <div className="min-w-0">
+      <p className="text-xs text-indigo-100">
+        Logged in as
+      </p>
+
+      <h3 className="text-sm font-bold text-white truncate">
+        {user?.name || "Recruiter"}
+      </h3>
+    </div>
+  </div>
+</div>
+
+{showProfile && (
+  <div className="mb-4 bg-white rounded-2xl p-4 shadow-lg border border-gray-200">
+    <h3 className="font-bold text-gray-800 mb-3">
+      User Profile
+    </h3>
+
+    <div className="space-y-2 text-sm">
+      <div>
+        <span className="font-semibold text-gray-600">
+          Full Name:
+        </span>
+        <p className="text-gray-800">
+          {user?.name || "Not Available"}
+        </p>
+      </div>
+
+      <div>
+        <span className="font-semibold text-gray-600">
+          Email:
+        </span>
+        <p className="text-gray-800 break-all">
+          {user?.email || "Not Available"}
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+
 
         <button onClick={logout} className="btn-animated mt-10 bg-red-500 w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2">
           <LogOut size={18} /> Logout
@@ -360,7 +419,16 @@ const COLORS = [
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/stats");
+     const token = localStorage.getItem("token");
+
+const response = await axios.get(
+  "http://localhost:5000/api/stats",
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
 
       if (response.data.success) {
         setStats(response.data.stats);
@@ -374,8 +442,15 @@ const COLORS = [
 
   const fetchActivities = async () => {
   try {
+    const token = localStorage.getItem("token");
+
     const response = await axios.get(
-      "http://localhost:5000/api/activity-logs"
+      "http://localhost:5000/api/activity-logs",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
     );
 
     if (response.data.success) {
@@ -511,6 +586,9 @@ function UploadResume() {
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
   const [message, setMessage] = useState("");
   const [bulkMessage, setBulkMessage] = useState("");
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState("");
+
   const [analysis, setAnalysis] = useState<{
     name: string;
     email: string;
@@ -521,7 +599,32 @@ function UploadResume() {
     recommendation: string;
   } | null>(null);
 
+  const fetchJobs = async () => {
+    try {
+      const token = localStorage.getItem("token");
+
+      const response = await axios.get("http://localhost:5000/api/jobs", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      setJobs(response.data.jobs || []);
+    } catch (error) {
+      console.log("Jobs fetch failed", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchJobs();
+  }, []);
+
   const handleUpload = async () => {
+    if (!selectedJobId) {
+      alert("Pehle Job Select Karo");
+      return;
+    }
+
     if (!file) {
       alert("Pehle single PDF resume select karo");
       return;
@@ -529,13 +632,24 @@ function UploadResume() {
 
     const formData = new FormData();
     formData.append("resume", file);
+    formData.append("jobId", selectedJobId);
 
     try {
       setMessage("Uploading...");
-      const response = await axios.post("http://localhost:5000/api/upload", formData);
+
+      const token = localStorage.getItem("token");
+
+      const response = await axios.post(
+        "http://localhost:5000/api/upload",
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
 
       setMessage(response.data.message);
-
       setAnalysis(response.data.analysis);
     } catch (error) {
       setMessage("Upload Failed");
@@ -544,48 +658,70 @@ function UploadResume() {
   };
 
   const handleBulkUpload = async () => {
-    if (bulkFiles.length === 0) {
-      alert("Pehle bulk PDFs select karo");
-      return;
-    }
+  if (!selectedJobId) {
+    alert("Pehle Job Select Karo");
+    return;
+  }
 
-    if (bulkFiles.length > 50) {
-      alert("Maximum 50 resumes ek saath upload kar sakte ho");
-      return;
-    }
+  if (bulkFiles.length === 0) {
+    alert("Pehle bulk PDFs select karo");
+    return;
+  }
 
-    const formData = new FormData();
+  if (bulkFiles.length > 50) {
+    alert("Maximum 50 resumes ek saath upload kar sakte ho");
+    return;
+  }
 
-    bulkFiles.forEach((file) => {
-      formData.append("resumes", file);
-    });
+  const formData = new FormData();
 
-    try {
-      setBulkMessage("Bulk uploading resumes...");
+  formData.append("jobId", selectedJobId);
 
-      const response = await axios.post(
-        "http://localhost:5000/api/upload/bulk",
-        formData
-      );
+  bulkFiles.forEach((file) => {
+    formData.append("resumes", file);
+  });
 
-      const results = response.data.results || [];
-      const successCount = results.filter((item: any) => item.success).length;
-      const failedCount = results.filter((item: any) => !item.success).length;
+  try {
+    setBulkMessage("Bulk uploading resumes...");
 
-      setBulkMessage(
-        `Bulk upload complete: ${successCount} successful, ${failedCount} failed`
-      );
-    } catch (error) {
-      setBulkMessage("Bulk Upload Failed");
-    }
-  };
+    const token = localStorage.getItem("token");
+
+    const response = await axios.post(
+      "http://localhost:5000/api/upload/bulk",
+      formData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const results = response.data.results || [];
+
+    const successCount = results.filter(
+      (item: any) => item.success
+    ).length;
+
+    const failedCount = results.filter(
+      (item: any) => !item.success
+    ).length;
+
+    setBulkMessage(
+      `Bulk upload complete: ${successCount} successful, ${failedCount} failed`
+    );
+  } catch (error) {
+    console.log(error);
+    setBulkMessage("Bulk Upload Failed");
+  }
+};
+
 
   return (
     <div className="p-6">
       <div className="card-animated bg-white rounded-3xl p-10 shadow-sm">
         <h2 className="text-3xl font-bold mb-3">Upload Resume</h2>
         <p className="text-gray-500 mb-8">
-          Upload single or bulk PDF resumes for AI screening.
+          Select a job role first, then upload resume for AI screening.
         </p>
 
         <div className="grid grid-cols-2 gap-6">
@@ -593,7 +729,22 @@ function UploadResume() {
             <FileText className="mx-auto text-indigo-600 mb-4" size={55} />
 
             <h3 className="text-2xl font-bold mb-2">Single Resume Upload</h3>
-            <p className="text-gray-500 mb-6">Upload one PDF resume</p>
+            <p className="text-gray-500 mb-6">
+              Upload one PDF resume for selected job
+            </p>
+
+            <select
+              value={selectedJobId}
+              onChange={(e) => setSelectedJobId(e.target.value)}
+              className="w-full mb-5 border border-indigo-300 rounded-xl p-3"
+            >
+              <option value="">Select Job Role</option>
+              {jobs.map((job) => (
+                <option key={job._id} value={job._id}>
+                  {job.title}
+                </option>
+              ))}
+            </select>
 
             <label className="btn-animated inline-block bg-white border border-indigo-300 text-indigo-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
               Choose Single PDF
@@ -634,6 +785,20 @@ function UploadResume() {
             <p className="text-gray-500 mb-6">
               Upload up to 50 PDF resumes at once
             </p>
+
+<select
+  value={selectedJobId}
+  onChange={(e) => setSelectedJobId(e.target.value)}
+  className="w-full mb-5 border border-purple-300 rounded-xl p-3"
+>
+  <option value="">Select Job Role</option>
+
+  {jobs.map((job) => (
+    <option key={job._id} value={job._id}>
+      {job.title}
+    </option>
+  ))}
+</select>
 
             <label className="btn-animated inline-block bg-white border border-purple-300 text-purple-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
               Choose Multiple PDFs
@@ -753,17 +918,28 @@ function Candidates() {
   const [jobDescription, setJobDescription] = useState("");
   const [jobMatchResult, setJobMatchResult] = useState<any>(null);
 
-  const fetchCandidates = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get("http://localhost:5000/api/candidates");
-      setCandidates(response.data.candidates || []);
-    } catch (error) {
-      console.log("Candidate fetch failed", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+ const fetchCandidates = async () => {
+  setLoading(true);
+
+  try {
+    const token = localStorage.getItem("token");
+
+    const response = await axios.get(
+      "http://localhost:5000/api/candidates",
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    setCandidates(response.data.candidates || []);
+  } catch (error) {
+    console.log("Candidate fetch failed", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updateStatus = async (id: string | undefined, status: string) => {
     if (!id) return;
@@ -1194,40 +1370,64 @@ function Jobs() {
   const [description, setDescription] = useState("");
 
   const fetchJobs = async () => {
-    try {
-      const response = await axios.get("http://localhost:5000/api/jobs");
-      setJobs(response.data.jobs || []);
-    } catch (error) {
-      console.log("Jobs fetch failed", error);
-    }
-  };
+  try {
+    const token = localStorage.getItem("token");
+
+    const response = await axios.get("http://localhost:5000/api/jobs", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    setJobs(response.data.jobs || []);
+  } catch (error) {
+    console.log("Jobs fetch failed", error);
+  }
+};
 
   const matchCandidates = async (job: any) => {
-    try {
-      const response = await axios.get(
-        `http://localhost:5000/api/jobs/${job._id}/match-candidates`
-      );
+  try {
+    const token = localStorage.getItem("token");
 
-      setMatchedCandidates(response.data.matches || []);
-      setSelectedJob(job);
-    } catch (error) {
-      console.log("Matching failed", error);
-      alert("Candidate matching failed");
-    }
-  };
+    const response = await axios.get(
+      `http://localhost:5000/api/jobs/${job._id}/match-candidates`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    setMatchedCandidates(response.data.matches || []);
+    setSelectedJob(job);
+  } catch (error) {
+    console.log("Matching failed", error);
+    alert("Candidate matching failed");
+  }
+};
 
   const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     try {
-      await axios.post("http://localhost:5000/api/jobs", {
-        title,
-        skills,
-        experience,
-        location,
-        salary,
-        description,
-      });
+      const token = localStorage.getItem("token");
+
+await axios.post(
+  "http://localhost:5000/api/jobs",
+  {
+    title,
+    skills,
+    experience,
+    location,
+    salary,
+    description,
+  },
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
 
       setTitle("");
       setSkills("");
@@ -1246,21 +1446,28 @@ function Jobs() {
   };
 
   const deleteJob = async (id: string) => {
-    const confirmDelete = window.confirm(
-      "Are you sure you want to delete this job?"
-    );
+  const confirmDelete = window.confirm(
+    "Are you sure you want to delete this job?"
+  );
 
-    if (!confirmDelete) return;
+  if (!confirmDelete) return;
 
-    try {
-      await axios.delete(`http://localhost:5000/api/jobs/${id}`);
-      fetchJobs();
-      alert("Job deleted successfully");
-    } catch (error) {
-      console.log("Job delete failed", error);
-      alert("Job delete failed");
-    }
-  };
+  try {
+    const token = localStorage.getItem("token");
+
+    await axios.delete(`http://localhost:5000/api/jobs/${id}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    fetchJobs();
+    alert("Job deleted successfully");
+  } catch (error) {
+    console.log("Job delete failed", error);
+    alert("Job delete failed");
+  }
+};
 
   useEffect(() => {
     fetchJobs();
