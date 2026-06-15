@@ -234,129 +234,165 @@ function Register() {
 
 function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-
   const location = useLocation();
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
-
   const [showProfile, setShowProfile] = useState(false);
-  
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-const pageTitle =
-  location.pathname === "/jobs"
-    ? "Job Management"
-    : location.pathname === "/candidates"
-    ? "Candidates"
-    : location.pathname === "/upload"
-    ? "Resume Upload"
-    : location.pathname === "/settings"
-    ? "Settings"
-    : "Recruitment Dashboard";
+  const pageTitle =
+    location.pathname === "/jobs"
+      ? "Job Management"
+      : location.pathname === "/candidates"
+      ? "Candidates"
+      : location.pathname === "/upload"
+      ? "Resume Upload"
+      : location.pathname === "/settings"
+      ? "Settings"
+      : "Recruitment Dashboard";
 
-const pageSubtitle =
-  location.pathname === "/jobs"
-    ? "Create and manage job openings"
-    : location.pathname === "/candidates"
-    ? "Manage candidate profiles"
-    : location.pathname === "/upload"
-    ? "Upload and analyze resumes"
-    : location.pathname === "/settings"
-    ? "Manage application settings"
-    : "AI powered hiring overview";
+  const pageSubtitle =
+    location.pathname === "/jobs"
+      ? "Create and manage job openings"
+      : location.pathname === "/candidates"
+      ? "Manage candidate profiles"
+      : location.pathname === "/upload"
+      ? "Upload and analyze resumes"
+      : location.pathname === "/settings"
+      ? "Manage application settings"
+      : "AI powered hiring overview";
 
-function logout() {
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-  navigate("/login");
-}
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login");
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f7ff] flex">
-      <aside className="w-[260px] bg-[#071028] text-white p-6">
-        <h1 className="text-2xl font-bold mb-10">HireSmart AI</h1>
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed lg:static top-0 left-0 z-50
+          h-screen lg:h-auto
+          w-[260px]
+          bg-[#071028] text-white p-5 md:p-6
+          transform transition-transform duration-300
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0
+          flex flex-col
+        `}
+      >
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-xl md:text-2xl font-bold">HireSmart AI</h1>
+
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden text-white text-2xl"
+          >
+            ×
+          </button>
+        </div>
 
         <SideLink to="/dashboard" icon={<LayoutDashboard />} text="Dashboard" />
         <SideLink to="/jobs" icon={<Briefcase />} text="Jobs" />
         <SideLink to="/candidates" icon={<Users />} text="Candidates" />
         <SideLink to="/upload" icon={<Upload />} text="Resume Upload" />
         <SideLink to="/settings" icon={<Settings />} text="Settings" />
-<div
-  onClick={() => setShowProfile(!showProfile)}
-  className="mt-8 mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 shadow-lg cursor-pointer hover:scale-105 transition-all duration-300"
->
-  <div className="flex items-center gap-3">
-    <div className="w-12 h-12 rounded-full bg-white text-indigo-600 flex items-center justify-center font-bold text-lg shrink-0">
-      {user?.name
-        ?.split(" ")
-        .map((word: string) => word[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "U"}
-    </div>
 
-    <div className="min-w-0">
-      <p className="text-xs text-indigo-100">
-        Logged in as
-      </p>
+        <div
+          onClick={() => setShowProfile(!showProfile)}
+          className="mt-6 mb-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl p-4 shadow-lg cursor-pointer hover:scale-[1.02] transition-all duration-300"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-white text-indigo-600 flex items-center justify-center font-bold text-lg shrink-0">
+              {user?.name
+                ?.split(" ")
+                .map((word: string) => word[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase() || "U"}
+            </div>
 
-      <h3 className="text-sm font-bold text-white truncate">
-        {user?.name || "Recruiter"}
-      </h3>
-    </div>
-  </div>
-</div>
+            <div className="min-w-0">
+              <p className="text-xs text-indigo-100">Logged in as</p>
+              <h3 className="text-sm font-bold text-white truncate">
+                {user?.name || "Recruiter"}
+              </h3>
+            </div>
+          </div>
+        </div>
 
-{showProfile && (
-  <div className="mb-4 bg-white rounded-2xl p-4 shadow-lg border border-gray-200">
-    <h3 className="font-bold text-gray-800 mb-3">
-      User Profile
-    </h3>
+        {showProfile && (
+          <div className="mb-4 bg-white rounded-2xl p-4 shadow-lg border border-gray-200">
+            <h3 className="font-bold text-gray-800 mb-3">User Profile</h3>
 
-    <div className="space-y-2 text-sm">
-      <div>
-        <span className="font-semibold text-gray-600">
-          Full Name:
-        </span>
-        <p className="text-gray-800">
-          {user?.name || "Not Available"}
-        </p>
-      </div>
+            <div className="space-y-2 text-sm">
+              <div>
+                <span className="font-semibold text-gray-600">Full Name:</span>
+                <p className="text-gray-800 break-words">
+                  {user?.name || "Not Available"}
+                </p>
+              </div>
 
-      <div>
-        <span className="font-semibold text-gray-600">
-          Email:
-        </span>
-        <p className="text-gray-800 break-all">
-          {user?.email || "Not Available"}
-        </p>
-      </div>
-    </div>
-  </div>
-)}
+              <div>
+                <span className="font-semibold text-gray-600">Email:</span>
+                <p className="text-gray-800 break-all">
+                  {user?.email || "Not Available"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
-
-        <button onClick={logout} className="btn-animated mt-10 bg-red-500 w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+        <button
+          onClick={logout}
+          className="btn-animated mt-auto bg-red-500 w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+        >
           <LogOut size={18} /> Logout
         </button>
       </aside>
 
-      <main className="flex-1">
-        <nav className="bg-white px-8 py-5 flex justify-between items-center shadow-sm">
-          <div>
-            <h1 className="text-3xl font-bold">{pageTitle}</h1>
-              <p className="text-gray-500">{pageSubtitle}</p>
+      {/* Main Content */}
+      <main className="flex-1 min-w-0 lg:ml-0">
+        <nav className="bg-white px-4 md:px-8 py-4 md:py-5 flex flex-col sm:flex-row gap-4 sm:justify-between sm:items-center shadow-sm">
+          <div className="flex items-start gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden bg-[#071028] text-white px-3 py-2 rounded-xl"
+            >
+              ☰
+            </button>
+
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold break-words">
+                {pageTitle}
+              </h1>
+              <p className="text-gray-500 text-sm md:text-base">
+                {pageSubtitle}
+              </p>
+            </div>
           </div>
 
-          
-            <button
-                 onClick={() => navigate("/jobs")}
-                className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl"
-                >
-                 Click for Create Jobs
-            </button>
+          <button
+            onClick={() => navigate("/jobs")}
+            className="btn-animated bg-indigo-600 text-white px-5 py-3 rounded-xl w-full sm:w-auto"
+          >
+            Click for Create Jobs
+          </button>
         </nav>
 
-        {children}
+        <div className="w-full overflow-x-hidden">
+          {children}
+        </div>
       </main>
     </div>
   );
@@ -484,14 +520,14 @@ const response = await axios.get(
         </div>
       ) : (
         <>
-          <section className="px-6 grid grid-cols-4 gap-6">
+         <section className="px-4 md:px-6 grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <Card title="Total Candidates" value={String(stats.totalCandidates)} />
             <Card title="Shortlisted" value={String(stats.shortlisted)} />
             <Card title="Manual Review" value={String(stats.manualReview)} />
             <Card title="Average Score" value={stats.averageScore} />
           </section>
 
-          <div className="grid grid-cols-2 gap-6 px-6 mt-6">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 px-4 md:px-6 mt-6">
             <div className="card-animated bg-white rounded-3xl p-6 shadow-sm">
               <h2 className="text-2xl font-bold mb-4">
                 Candidate Status Distribution
@@ -621,7 +657,7 @@ function UploadResume() {
 
   const handleUpload = async () => {
     if (!selectedJobId) {
-      alert("Pehle Job Select Karo");
+      alert("Select a job first");
       return;
     }
 
@@ -659,7 +695,7 @@ function UploadResume() {
 
   const handleBulkUpload = async () => {
   if (!selectedJobId) {
-    alert("Pehle Job Select Karo");
+    alert("Select a job first");
     return;
   }
 
@@ -717,14 +753,14 @@ function UploadResume() {
 
 
   return (
-    <div className="p-6">
-      <div className="card-animated bg-white rounded-3xl p-10 shadow-sm">
+    <div className="p-4 md:p-6">
+      <div className="card-animated bg-white rounded-3xl p-5 md:p-10 shadow-sm">
         <h2 className="text-3xl font-bold mb-3">Upload Resume</h2>
         <p className="text-gray-500 mb-8">
           Select a job role first, then upload resume for AI screening.
         </p>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="border-2 border-dashed border-indigo-300 bg-indigo-50 rounded-3xl p-10 text-center">
             <FileText className="mx-auto text-indigo-600 mb-4" size={55} />
 
@@ -856,7 +892,7 @@ function UploadResume() {
               AI Resume Analysis Result
             </h2>
 
-            <div className="grid grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div className="card-animated bg-white p-5 rounded-2xl border">
                 <p className="text-gray-500">Candidate Name</p>
                 <h3 className="text-xl font-bold">{analysis.name}</h3>
@@ -1051,12 +1087,12 @@ const rankedCandidates = [...filteredCandidates].sort(
 
 return (
 
-    <div className="p-6">
-  <div className="card-animated bg-white rounded-3xl p-8 shadow-sm">
-    <div className="flex justify-between items-center mb-6">
+    <div className="p-4 md:p-6">
+  <div className="card-animated bg-white rounded-3xl p-5 md:p-8 shadow-sm overflow-x-hidden">
+    <div className="flex flex-col md:flex-row gap-4 md:justify-between md:items-center mb-6">
       <h2 className="text-2xl font-bold">Candidates</h2>
 
-      <div className="flex gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
         <button
           onClick={exportToExcel}
           className="btn-animated bg-green-600 text-white px-5 py-3 rounded-xl font-bold"
@@ -1073,7 +1109,7 @@ return (
       </div>
     </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <input
             className="border p-4 rounded-xl col-span-2"
             placeholder="Search by name, email or skills..."
@@ -1098,7 +1134,8 @@ return (
         ) : filteredCandidates.length === 0 ? (
           <p className="text-gray-500">No matching candidates found.</p>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto">
+  <table className="w-full min-w-[800px]">
             <thead>
               <tr className="text-left text-gray-500 border-b">
                 <th className="pb-4">Candidate</th>
@@ -1155,6 +1192,7 @@ return (
               ))}
             </tbody>
           </table>
+        </div>
         )}
       </div>
 
@@ -1409,6 +1447,11 @@ function Jobs() {
   const createJob = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    if (!title.trim() || !skills.trim()) {
+  alert("Job Title and Required Skills are required");
+  return;
+}
+
     try {
       const token = localStorage.getItem("token");
 
@@ -1474,8 +1517,8 @@ await axios.post(
   }, []);
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-col md:flex-row gap-4 md:justify-between md:items-center mb-6">
         <div>
           <h2 className="text-3xl font-bold">Jobs</h2>
           <p className="text-gray-500">
@@ -1495,7 +1538,7 @@ await axios.post(
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-6">
           <form
             onSubmit={createJob}
-            className="bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl"
+            className="bg-white rounded-3xl p-5 md:p-8 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-3xl font-bold">Create New Job</h2>
@@ -1509,6 +1552,10 @@ await axios.post(
               </button>
             </div>
 
+<label className="font-bold mb-2 block">
+  Job Title <span className="text-red-500">*</span>
+</label>
+
             <input
               className="w-full border p-4 rounded-xl mb-4"
               placeholder="Job Title"
@@ -1517,6 +1564,10 @@ await axios.post(
               required
             />
 
+<label className="font-bold mb-2 block">
+  Required Skills <span className="text-red-500">*</span>
+</label>
+
             <input
               className="w-full border p-4 rounded-xl mb-4"
               placeholder="Required Skills comma separated, e.g. React, Node.js, MongoDB"
@@ -1524,7 +1575,7 @@ await axios.post(
               onChange={(e) => setSkills(e.target.value)}
             />
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <input
                 className="border p-4 rounded-xl mb-4"
                 placeholder="Experience"
@@ -1567,7 +1618,7 @@ await axios.post(
           <p className="text-gray-500">No jobs created yet.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {jobs.map((job) => (
             <div
               key={job._id}
@@ -1699,8 +1750,8 @@ await axios.post(
 
 function SettingsPage() {
   return (
-    <div className="p-6">
-      <div className="card-animated bg-white rounded-3xl p-8 shadow-sm max-w-2xl">
+    <div className="p-4 md:p-6">
+      <div className="card-animated bg-white rounded-3xl p-5 md:p-8 shadow-sm w-full max-w-2xl">
         <h2 className="text-3xl font-bold mb-6">Settings</h2>
 
         <input className="w-full border p-4 rounded-xl mb-4" placeholder="Company Name" />
@@ -1716,7 +1767,7 @@ function SettingsPage() {
 
 function Card({ title, value }: { title: string; value: string }) {
   return (
-    <div className="card-animated bg-white rounded-3xl p-6 shadow-xl border border-gray-100 hover:shadow-2xl">
+    <div className="card-animated bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-xl border border-gray-100 hover:shadow-2xl">
       <p className="text-gray-500">{title}</p>
       <h2 className="text-4xl font-bold mt-2">{value}</h2>
     </div>

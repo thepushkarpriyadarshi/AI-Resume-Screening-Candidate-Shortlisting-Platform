@@ -863,12 +863,12 @@ app.post("/api/jobs", authMiddleware, async (req, res) => {
     const { title, skills, experience, location, salary, description } =
       req.body;
 
-    if (!title) {
-      return res.status(400).json({
-        success: false,
-        message: "Job title is required",
-      });
-    }
+    if (!title || !String(skills || "").trim()) {
+  return res.status(400).json({
+    success: false,
+    message: "Job title and required skills are required",
+  });
+}
 
     const job = await Job.create({
       userId: req.user.userId,
