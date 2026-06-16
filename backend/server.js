@@ -198,8 +198,16 @@ function calculateJobMatch(resumeSkills, jobDescription) {
 
 
 function extractEmail(text) {
-  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  return match ? match[0] : "Not Found";
+  const emailRegex =
+    /\b[A-Za-z][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+
+  const matches = text.match(emailRegex);
+
+  if (!matches || matches.length === 0) {
+    return "Not Found";
+  }
+
+  return matches[0];
 }
 
 function extractPhone(text) {
@@ -344,6 +352,8 @@ app.get("/api/db-status", (req, res) => {
 
 app.post("/api/upload", authMiddleware, upload.single("resume"), async (req, res) => {
   try {
+
+
     const { jobId } = req.body;
 
     if (!jobId) {
