@@ -9,6 +9,8 @@ const mongoose = require("mongoose");
 const pdfParse = require("pdf-parse/lib/pdf-parse");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const mammoth = require("mammoth");
+const Tesseract = require("tesseract.js");
 
 dotenv.config();
 
@@ -140,12 +142,59 @@ function authMiddleware(req, res, next) {
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") cb(null, true);
-    else cb(new Error("Only PDF files are allowed"));
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "image/jpeg",
+      "image/png",
+      "image/jpg",
+    ];
+
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(
+        new Error(
+          "Only PDF, DOC, DOCX, JPG, JPEG and PNG files are allowed"
+        )
+      );
+    }
   },
 });
 
 /* Extract Functions */
+
+async function extractTextFromResume(file) {
+  if (file.mimetype === "application/pdf") {
+    const fileBuffer = await fs.promises.readFile(file.path);
+    const pdfData = await pdfParse(fileBuffer);
+    return pdfData.text || "";
+  }
+
+  if (
+    file.mimetype === "application/msword" ||
+    file.mimetype ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    const result = await mammoth.extractRawText({
+      path: file.path,
+    });
+
+    return result.value || "";
+  }
+
+  if (
+    file.mimetype === "image/jpeg" ||
+    file.mimetype === "image/png" ||
+    file.mimetype === "image/jpg"
+  ) {
+    const result = await Tesseract.recognize(file.path, "eng");
+    return result.data.text || "";
+  }
+
+  return "";
+}
 
 function calculateJobMatch(resumeSkills, jobDescription) {
   const jdText = jobDescription.toLowerCase();
@@ -198,26 +247,44 @@ function calculateJobMatch(resumeSkills, jobDescription) {
 
 
 function extractEmail(text) {
+  const cleanedText = text
+    .replace(/\s+/g, " ")
+    .replace(/\s*@\s*/g, "@")
+    .replace(/\s*\.\s*/g, ".");
+
   const emailRegex =
-    /\b[A-Za-z][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+    /[A-Za-z][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
-  const matches = text.match(emailRegex);
+  const matches = cleanedText.match(emailRegex);
 
-  if (!matches || matches.length === 0) {
-    return "Not Found";
-  }
-
-  return matches[0];
+  return matches && matches.length > 0 ? matches[0] : "Not Found";
 }
 
 function extractPhone(text) {
-  const match = text.match(/(\+91[\s-]?)?[6-9]\d{9}/);
+  const cleanedText = text.replace(/[^\d+]/g, "");
+
+  const match = cleanedText.match(/(\+91)?[6-9]\d{9}/);
+
   return match ? match[0] : "Not Found";
 }
 
 function extractName(text, fileName) {
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  return lines[0] || fileName.replace(".pdf", "");
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      const lower = line.toLowerCase();
+      return (
+        !lower.includes("@") &&
+        !lower.includes("resume") &&
+        !lower.includes("curriculum") &&
+        !lower.includes("vitae") &&
+        !/\d{6,}/.test(line)
+      );
+    });
+
+  return lines[0] || fileName.replace(/\.[^/.]+$/, "");
 }
 
 function extractSkills(text) {
@@ -237,10 +304,22 @@ function extractSkills(text) {
     "TypeScript",
     "Machine Learning",
     "Data Analysis",
+    "Tailwind CSS",
+    "Bootstrap",
+    "MySQL",
+    "PostgreSQL",
+    "Firebase",
+    "REST API",
+    "Next.js",
+    "Redux",
+    "Docker",
+    "AWS",
   ];
 
+  const normalizedText = text.toLowerCase().replace(/\s+/g, " ");
+
   return skillsList.filter((skill) =>
-    text.toLowerCase().includes(skill.toLowerCase())
+    normalizedText.includes(skill.toLowerCase())
   );
 }
 
@@ -382,9 +461,7 @@ app.post("/api/upload", authMiddleware, upload.single("resume"), async (req, res
       });
     }
 
-    const fileBuffer = await fs.promises.readFile(req.file.path);
-    const pdfData = await pdfParse(fileBuffer);
-    const text = pdfData.text || "";
+   const text = await extractTextFromResume(req.file);
 
     const skills = extractSkills(text);
 
@@ -412,7 +489,7 @@ app.post("/api/upload", authMiddleware, upload.single("resume"), async (req, res
       skills: skills.length ? skills : ["No major skills found"],
       score: scoreValue + "%",
       recommendation:
-        scoreValue >= 75 ? "Shortlist Candidate" : "Needs Manual Review",
+        scoreValue >= 75 ? "Shortlist Candidate" : "Rejected",
     };
 
     let n8nResult = null;
@@ -511,9 +588,7 @@ app.post("/api/upload/bulk", authMiddleware, upload.array("resumes", 50), async 
 
     for (const file of req.files) {
       try {
-        const fileBuffer = await fs.promises.readFile(file.path);
-        const pdfData = await pdfParse(fileBuffer);
-        const text = pdfData.text || "";
+        const text = await extractTextFromResume(file);
 
         const skills = extractSkills(text);
 
@@ -541,7 +616,7 @@ app.post("/api/upload/bulk", authMiddleware, upload.array("resumes", 50), async 
           skills: skills.length ? skills : ["No major skills found"],
           score: scoreValue + "%",
           recommendation:
-            scoreValue >= 75 ? "Shortlist Candidate" : "Needs Manual Review",
+            scoreValue >= 75 ? "Shortlist Candidate" : "Rejected",
         };
 
         let n8nResult = null;
@@ -631,7 +706,6 @@ app.get("/api/stats", authMiddleware, async (req, res) => {
         stats: {
           totalCandidates: 0,
           shortlisted: 0,
-          manualReview: 0,
           rejected: 0,
           averageScore: "0%",
         },
@@ -648,9 +722,6 @@ app.get("/api/stats", authMiddleware, async (req, res) => {
       (candidate) => candidate.status === "Shortlist Candidate"
     ).length;
 
-    const manualReview = candidates.filter(
-      (candidate) => candidate.status === "Needs Manual Review"
-    ).length;
 
     const rejected = candidates.filter(
       (candidate) => candidate.status === "Rejected"
@@ -671,7 +742,6 @@ app.get("/api/stats", authMiddleware, async (req, res) => {
       stats: {
         totalCandidates,
         shortlisted,
-        manualReview,
         rejected,
         averageScore,
       },

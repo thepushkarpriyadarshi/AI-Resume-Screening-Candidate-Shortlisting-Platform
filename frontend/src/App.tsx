@@ -416,13 +416,15 @@ function Dashboard() {
   const [stats, setStats] = useState({
     totalCandidates: 0,
     shortlisted: 0,
-    manualReview: 0,
+    rejected: 0,
     averageScore: "0%",
   });
 
   const [loading, setLoading] = useState(true);
 
   const [activities, setActivities] = useState([]);
+
+  const [showAllActivities, setShowAllActivities] = useState(false);
 
   useEffect(() => {
   fetchStats();
@@ -435,22 +437,14 @@ function Dashboard() {
     value: stats.shortlisted,
   },
   {
-    name: "Manual Review",
-    value: stats.manualReview,
-  },
-  {
     name: "Rejected",
-    value:
-      stats.totalCandidates -
-      stats.shortlisted -
-      stats.manualReview,
+    value: stats.rejected,
   },
 ];
 
 const COLORS = [
-  "#22c55e", // Green
-  "#f59e0b", // Yellow
-  "#ef4444", // Red
+  "#22c55e",
+  "#ef4444",
 ];
 
   const fetchStats = async () => {
@@ -523,7 +517,7 @@ const response = await axios.get(
          <section className="px-4 md:px-6 grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             <Card title="Total Candidates" value={String(stats.totalCandidates)} />
             <Card title="Shortlisted" value={String(stats.shortlisted)} />
-            <Card title="Manual Review" value={String(stats.manualReview)} />
+            <Card title="Rejected" value={String(stats.rejected)} />
             <Card title="Average Score" value={stats.averageScore} />
           </section>
 
@@ -545,7 +539,7 @@ const response = await axios.get(
       </p>
     ) : (
       <div className="space-y-3">
-        {activities.slice(0, 10).map((log, index) => (
+        {activities.slice(0, showAllActivities ? activities.length : 3).map((log, index) => (
           <div
             key={index}
             className="border rounded-xl p-4 bg-gray-50"
@@ -563,6 +557,16 @@ const response = await axios.get(
             </p>
           </div>
         ))}
+       {activities.length > 3 && (
+  <div className="flex justify-center mt-4">
+    <button
+      onClick={() => setShowAllActivities(!showAllActivities)}
+      className="px-4 py-2 rounded-lg bg-indigo-100 text-indigo-700 font-semibold hover:bg-indigo-200 transition"
+    >
+      {showAllActivities ? "▲ Show Less" : "▼ See More"}
+    </button>
+  </div>
+)}
       </div>
     )}
   </div>
@@ -783,10 +787,10 @@ function UploadResume() {
             </select>
 
             <label className="btn-animated inline-block bg-white border border-indigo-300 text-indigo-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
-              Choose Single PDF
+              Choose Resume File
               <input
                 type="file"
-                accept="application/pdf,.pdf"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                 className="hidden"
                 onChange={(e) => {
                   setFile(e.target.files?.[0] || null);
@@ -837,11 +841,11 @@ function UploadResume() {
 </select>
 
             <label className="btn-animated inline-block bg-white border border-purple-300 text-purple-700 px-8 py-4 rounded-xl font-bold cursor-pointer">
-              Choose Multiple PDFs
+              Choose Multiple Resumes
               <input
                 type="file"
                 multiple
-                accept="application/pdf,.pdf"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
                 className="hidden"
                 onChange={(e) => {
                   const selectedFiles = Array.from(e.target.files || []);
@@ -1118,15 +1122,14 @@ return (
           />
 
           <select
-            className="border p-4 rounded-xl"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="All">All Status</option>
-            <option value="Shortlist Candidate">Shortlisted</option>
-            <option value="Needs Manual Review">Manual Review</option>
-            <option value="Rejected">Rejected</option>
-          </select>
+  className="border p-4 rounded-xl"
+  value={statusFilter}
+  onChange={(e) => setStatusFilter(e.target.value)}
+>
+  <option value="All">All Status</option>
+  <option value="Shortlist Candidate">Shortlisted</option>
+  <option value="Rejected">Rejected</option>
+</select>
         </div>
 
         {loading ? (
@@ -1197,8 +1200,9 @@ return (
       </div>
 
       {selectedCandidate && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 overflow-y-auto p-6">
-          <div className="card-animated bg-white rounded-3xl p-8 w-full max-w-2xl shadow-2xl">
+        <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto">
+  <div className="min-h-screen flex items-start md:items-center justify-center p-4 md:p-6">
+          <div className="card-animated bg-white rounded-3xl p-5 md:p-8 w-full max-w-2xl shadow-2xl my-6 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-3xl font-bold">Candidate Details</h2>
 
@@ -1283,15 +1287,6 @@ return (
     className="btn-animated bg-green-600 text-white px-5 py-3 rounded-xl font-bold"
   >
     ✅ Shortlist
-  </button>
-
-  <button
-    onClick={() =>
-      updateStatus(selectedCandidate._id, "Needs Manual Review")
-    }
-    className="btn-animated bg-yellow-500 text-white px-5 py-3 rounded-xl font-bold"
-  >
-    🟡 Manual Review
   </button>
 
   <button
@@ -1386,9 +1381,10 @@ return (
                   </div>
                 </div>
               )}
-            </div>
+                   </div>
           </div>
         </div>
+      </div>
       )}
     </div>
   );
